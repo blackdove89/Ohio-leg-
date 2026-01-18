@@ -1,0 +1,62 @@
+
+/* TSQL needed to create auto process to extract OHLEG users from 
+ROSTER Data and Polaris_MSCRM 
+ON 
+Server: Polprd,17001 
+Database: PolariCRM database
+Server: AGO03
+Database: Roster Data*/
+
+/* STEP 1
+Server: PolaDatabase: Polaris_MSCRM database */
+
+SELECT * INTO TempUsers 
+FROM ContactBase
+
+
+/* STEP 2
+backup TempUsers 
+ON 
+Server: Polrd,17001 
+Database: PoRM database 
+Restore on AGO03 */
+
+BACKUP DATABASE [TempUsers] TO  DISK = 
+N'\\ag.us\Apps\SQLBackups_3260_Daily\Production\QLPRD01\TempUsers\FULL_COPY_ONLY\QLPRD01_TempUsers_FULL_COPY_ONLY_20260112_212110.bak' 
+WITH  COPY_ONLY, NOFORMAT, NOINIT,  NAME = N'TempUsers-Full Database Backup', SKIP, NOREWIND, NOUNLOAD,  STATS = 10
+GO
+
+USE [master]
+RESTORE DATABASE [TempUsers] FROM  DISK = 
+N'\\ag.us\Apps\SQLBackups_3260_Daily\Production\QLPRD01\TempUsers\FULL_COPY_ONLY\QLPRD01_TempUsers_FULL_COPY_ONLY_20260112_212110.bak' 
+WITH  FILE = 2,  NOUNLOAD,  REPLACE,  STATS = 5
+
+GO
+
+/* STEP 3 
+After TempUsers restore on AGO03,
+Run below script against Roster Data Database 
+ON
+Server: AGO03 */
+
+select 
+--u.Id,
+--u.PolarisOfficerId,
+pag.AgencyORINumber,
+pag.AgencyName,
+c.FirstName,
+c.LastName,
+u.PrimaryEmail
+from Users u(nolock)
+left join PolarisDemographicsUpdate pd(nolock) on u.PolarisOfficerId=pd.PolarisOfficerID
+left join [TempUsers].dbo.contacts c(nolock) on c.EmployeeId=u.PolarisOfficerId
+inner join UserAgencyMemberships uam(nolock) on u.Id=uam.[User_Id]
+inner join Agencies ag(nolock) ON uam.Agency_Id = ag.Id  
+inner join PolarisAgencies pag(nolock) on ag.PolarisAgencyID=pag.AgencyID
+inner join [Permissions] p(nolock) on p.UserAgencyMembership_Id =uam.Id
+inner join [Attributes] a(nolock) on p.Attribute_Id=a.Id
+where a.SystemName='oagSwiftSE' 
+  and a.IsVisible = 1  
+   and ag.IsEnabled = 1  
+   and uam.IsEnabled = 1  
+   and u.IsEnabled = 1 
