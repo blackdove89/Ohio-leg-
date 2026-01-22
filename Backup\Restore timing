@@ -1,0 +1,25 @@
+
+--Check backup\restore run time 
+
+SELECT 
+r.session_id,
+r.command,
+r.status,
+DB_NAME(r.database_id) AS database_name,
+r.percent_complete,
+r.start_time,
+DATEADD(SECOND, r.estimated_completion_time / 1000, GETDATE()) AS  estimated_completion_time,
+r.estimated_completion_time / 1000 AS estimated_seconds_remaining
+FROM sys.dm_exec_requests r
+WHERE r.command LIKE 'RESTORE%'; --or backup
+
+
+--Check backup\restore run time 
+SELECT
+destination_database_name,
+restore_type,
+restore_date,
+user_name
+FROM msdb.dbo.restorehistory
+WHERE destination_database_name = 'databasename'--replace with dbname
+ORDER BY restore_date DESC
