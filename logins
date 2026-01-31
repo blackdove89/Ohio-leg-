@@ -1,0 +1,134 @@
+MIGRATION PROCESS FOR ALL OBJECTS, LOGINS AND DATABASES
+
+--SCRIPTING OUT ALL OBLECT ON INSTANCE  
+--The will create script from all your object that needs to be migrated.
+Export-DbaInstance -SqlInstance "complete/servername" –use completed server name
+
+===================================================
+This document provides a detailed step-by-step guide for restoring multiple databases in phases, migrating logins and fixing orphaned users using dbatools.
+1. Ensure PowerShell 5.1 or 7 is installed.
+2. Install dbatools module:
+Install-Module dbatools -Scope CurrentUser -AllowClobber -Force -SkipPublisherCheck
+3. Verify connectivity to source and destination instances using Test-DbaConnection.
+
+===========-================================= 
+--COPYING LOGINS WITH POWERSHELL DBATOOLS 
+--NOTE: always use full server name
+---ExcludeLogin lets you skip specific logins from the copy operation—useful when you don’t want certain accounts (like an admin group you manage manually) to be copied or altered on the destination.
+
+--IMPORT ALL LOGINS FROM SOURCE TO DESTINATION
+Copy-DbaLogin -Source complete/servername -Destination complete/servername -ExcludeLogin OH\DBAteams -Force
+
+--REPORT ORPHANUSER
+Find-DbaOrphanUser -SqlInstance AGQL22R01 | Format-Table (OLD)
+Get-DbaDbOrphanUser -SqlInstance 'complete/servername' | Format-Table --new
+
+--CHECK THE ORPHAN USERS FIX 
+Repair-DbaDbOrphanUser -SqlInstance 'complete/servername' -WhatIf -Verbose 
+
+--FIX THE ORPHAN USERS 
+Repair-DbaDbOrphanUser -SqlInstance 'complete/servername' -Verbose 
+
+============================================= 
+--RESTORING DATABASES FROM PATH TO DESTINATION SERVER 
+
+--For single database restore:
+Restore-DbaDatabase -SqlInstance complete/servername -Database Matricite-BCI-Test -Path \\ago0\SQLBackups\PreProduction\AMatricUpgrade\2026-01-26
+
+In other to restore multiple databases you do not have to name the header, let dbatools AutoMap the backups
+--For multiple database restore:
+Restore-DbaDatabase -SqlInstance complete/servername -Path \\ago0\SQLBackups\PreProduction\AMatricUpgrade\2026-01-26
+
+
+=============================================== 
+--When import drops user when forced
+--The must be done with elevated CMD
+
+--In case you are not sure of group name, use:
+whoami /groups
+
+--run
+net stop "SQL Server (SQLPRE01)" --use instance name 
+net start "SQL Server (SQLPRE01)" /m"SQLCMD"
+
+--Then 
+sqlcmd -S localhost\SQLPRE01 -E
+1
+--Then 
+CREATE LOGIN [OHIO-AG\DBA_Admins] FROM WINDOWS;
+ALTER SERVER ROLE [sysadmin] ADD MEMBER [OH\DBAteams];
+>GO
+>QUIT
+
+--Then 
+net stop "SQL Server (SQLPRE01)" --use instance name 
+net start "SQL Server (SQLPRE01)"
+
+========================= 
+To delete all logins on a server 
+--Replace with your test server name
+$instance = "TestServer\Instance"
+
+================
+--Use this to export the logins, this sets the paramenter
+-- Set Variables (what you need)
+$instance        = "TestServer\Instance"
+$exportFolder    = "C:\Temp\dbatools-login-reset"
+$timestamp       = (Get-Date -Format "yyyyMMdd-HHmmss")
+$exportLoginFile = Join-Path $exportFolder "logins-$($timestamp).sql"
+$exportRoleFile  = Join-Path $exportFolder "server-roles-$($timestamp).sql"
+$exportPermFile  = Join-Path $exportFolder "server-permissions-$($timestamp).sql"
+
+--Confirm if folder exist 
+New-Item -ItemType Directory -Path $exportFolder -Force
+
+--Test if the folder get created (result should be true)
+Test-Path $exportFolder
+============================
+--To clear logins at once
+$instance 	 = "complete/servername"
+
+--List logins to keep if any 
+$keep = @('AGUSER', 'OH\DBAteam','OH\AKjjm')
+
+--View logins to be deleted 
+Get-DbaLogin -SqlInstance $instance -ExcludeSystemLogins | Where-Object { $_.Name -notin $keep } |
+Remove-DbaLogin -WhatIf -Confirm:$false
+
+--Delete logins, check first 
+Get-DbaLogin -SqlInstance $instance -ExcludeSystemLogins | Where-Object { $_.Name -notin $keep } |
+Remove-DbaLogin -WhatIf -Confirm:$false
+
+--Delete logins
+Get-DbaLogin -SqlInstance $instance -ExcludeSystemLogins | Where-Object { $_.Name -notin $keep } |
+Remove-DbaLogin -Confirm:$false
+
+================================= 
+--check logins 
+SELECT
+    sp.name AS LoginName,
+    dp.name AS UserName,
+    drp.name AS RoleName
+FROM sys.database_principals dp
+JOIN sys.server_principals sp
+    ON dp.sid = sp.sid
+LEFT JOIN sys.database_role_members drm
+    ON dp.principal_id = drm.member_principal_id
+LEFT JOIN sys.database_principals drp
+    ON drm.role_principal_id = drp.principal_id
+WHERE dp.type IN ('S','U','G') and sp.name = 'OHkkihh@huser$'
+ORDER BY sp.name, drp.name;
+
+====================
+
+--check orphans user 
+SELECT name
+FROM sys.database_principals
+WHERE type IN ('S','U')
+AND authentication_type = 1
+AND sid NOT IN (SELECT sid FROM sys.server_principals);
+
+
+
+
+
