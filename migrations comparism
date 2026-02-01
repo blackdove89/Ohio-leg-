@@ -1,0 +1,43 @@
+SET NOCOUNT ON;
+
+SELECT
+    @@SERVERNAME AS ServerName,
+    SERVERPROPERTY('Edition') AS Edition,
+    SERVERPROPERTY('ProductVersion') AS ProductVersion,
+    SERVERPROPERTY('ProductLevel') AS ProductLevel,
+    SERVERPROPERTY('ProductUpdateLevel') AS ProductUpdateLevel,
+    SERVERPROPERTY('Collation') AS ServerCollation;
+---------------------------
+SELECT
+    servicename,
+    startup_type_desc,
+    status_desc,
+    service_account
+FROM sys.dm_server_services;
+----------------------------
+SELECT
+    @@SERVERNAME AS ServerName,
+    ag.name AS AGName,
+    ag.automated_backup_preference_desc,
+    ag.failure_condition_level,
+    ag.health_check_timeout
+FROM sys.availability_groups ag;
+----------------------------
+SELECT
+    name,
+    type_desc,
+    is_disabled,
+    default_database_name,
+    create_date,
+    modify_date
+FROM sys.server_principals
+WHERE type IN ('S','U','G')
+ORDER BY name;
+--------------------------
+SELECT
+    r.name AS ServerRole,
+    m.name AS MemberName
+FROM sys.server_role_members rm
+JOIN sys.server_principals r ON rm.role_principal_id = r.principal_id
+JOIN sys.server_principals m ON rm.member_principal_id = m.principal_id
+ORDER BY r.name, m.name;
