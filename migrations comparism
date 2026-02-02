@@ -168,6 +168,22 @@ JOIN sys.database_principals pr
     ON pe.grantee_principal_id = pr.principal_id
 WHERE pr.name NOT IN ('dbo','guest','sys','INFORMATION_SCHEMA')
 ORDER BY pr.name, pe.class_desc, pe.permission_name, pe.state_desc, ScopeSchema, ScopeObject;
+------------------------------
+--Explicit permissions with extra perms
+USE Matric1;
+GO
+SET NOCOUNT ON;
+
+SELECT TOP (50)
+    pr.name AS UserName,
+    pr.type_desc AS UserType,
+    COUNT(*) AS PermissionRowCount
+FROM sys.database_permissions pe
+JOIN sys.database_principals pr
+  ON pe.grantee_principal_id = pr.principal_id
+WHERE pr.name NOT IN ('dbo','guest','sys','INFORMATION_SCHEMA')
+GROUP BY pr.name, pr.type_desc
+ORDER BY COUNT(*) DESC;
 
 
 
