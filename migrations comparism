@@ -169,7 +169,8 @@ JOIN sys.database_principals pr
 WHERE pr.name NOT IN ('dbo','guest','sys','INFORMATION_SCHEMA')
 ORDER BY pr.name, pe.class_desc, pe.permission_name, pe.state_desc, ScopeSchema, ScopeObject;
 ------------------------------
---Explicit permissions with extra perms
+--Identifying Explicit permissions with extra perms
+--) Find the principals that have “extra perms” on 2022 (SAFE)
 USE Matric1;
 GO
 SET NOCOUNT ON;
@@ -184,6 +185,67 @@ JOIN sys.database_principals pr
 WHERE pr.name NOT IN ('dbo','guest','sys','INFORMATION_SCHEMA')
 GROUP BY pr.name, pr.type_desc
 ORDER BY COUNT(*) DESC;
+******
+--Check if db_owner (or other powerful roles) differs (SAFE)
+USE Matric1;
+GO
+SET NOCOUNT ON;
+
+SELECT
+    r.name AS RoleName,
+    m.name AS MemberName,
+    m.type_desc AS MemberType
+FROM sys.database_role_members rm
+JOIN sys.database_principals r ON rm.role_principal_id = r.principal_id
+JOIN sys.database_principals m ON rm.member_principal_id = m.principal_id
+WHERE r.name IN ('db_owner','db_securityadmin','db_ddladmin','db_datareader','db_datawriter')
+ORDER BY r.name, m.name;
+******
+--Identify the actual “extra” permission rows (SAFE)
+USE Matric1;
+GO
+SET NOCOUNT ON;
+
+SELECT
+    pr.name AS UserName,
+    pr.type_desc AS UserType,
+    pe.class_desc,
+    pe.permission_name,
+    pe.state_desc,
+    CASE 
+        WHEN pe.class_desc = 'OBJECT_OR_COLUMN' THEN OBJECT_SCHEMA_NAME(pe.major_id)
+        WHEN pe.class_desc = 'SCHEMA' THEN SCHEMA_NAME(pe.major_id)
+        ELSE NULL
+    END AS ScopeSchema,
+    CASE 
+        WHEN pe.class_desc = 'OBJECT_OR_COLUMN' THEN OBJECT_NAME(pe.major_id)
+        ELSE NULL
+    END AS ScopeObject
+FROM sys.database_permissions pe
+JOIN sys.database_principals pr
+  ON pe.grantee_principal_id = pr.principal_id
+WHERE pr.name NOT IN ('dbo','guest','sys','INFORMATION_SCHEMA')
+  AND pe.permission_name IN (
+      'CONTROL','ALTER','ALTER ANY USER','ALTER ANY ROLE','ALTER ANY SCHEMA',
+      'IMPERSONATE','TAKE OWNERSHIP','VIEW DEFINITION','EXECUTE'
+  )
+ORDER BY pr.name, pe.permission_name, pe.state_desc, ScopeSchema, ScopeObject;
+******
+--check for new users 
+USE Matric1;
+GO
+SET NOCOUNT ON;
+
+SELECT
+    name,
+    type_desc,
+    authentication_type_desc,
+    create_date
+FROM sys.database_principals
+WHERE type IN ('S','U','G')
+  AND name NOT IN ('dbo','guest','sys','INFORMATION_SCHEMA')
+ORDER BY name;
+
 
 
 
