@@ -41,3 +41,55 @@ FROM sys.server_role_members rm
 JOIN sys.server_principals r ON rm.role_principal_id = r.principal_id
 JOIN sys.server_principals m ON rm.member_principal_id = m.principal_id
 ORDER BY r.name, m.name;
+--------------------------
+SET NOCOUNT ON;
+
+SELECT
+    j.name AS JobName,
+    j.enabled AS IsEnabled,
+    SUSER_SNAME(j.owner_sid) AS JobOwner,
+    j.date_created AS CreatedDate,
+    j.date_modified AS ModifiedDate
+FROM msdb.dbo.sysjobs j
+ORDER BY j.name;
+----------------------------
+SET NOCOUNT ON;
+
+SELECT
+    j.name AS JobName,
+    s.name AS ScheduleName,
+    s.enabled AS ScheduleEnabled,
+    CASE s.freq_type
+        WHEN 1 THEN 'One Time'
+        WHEN 4 THEN 'Daily'
+        WHEN 8 THEN 'Weekly'
+        WHEN 16 THEN 'Monthly'
+        WHEN 32 THEN 'Monthly (Relative)'
+        WHEN 64 THEN 'When SQL Agent Starts'
+        WHEN 128 THEN 'When Computer Is Idle'
+    END AS FrequencyType,
+    s.freq_interval,
+    s.active_start_date,
+    s.active_start_time,
+    s.active_end_date,
+    s.active_end_time
+FROM msdb.dbo.sysjobs j
+JOIN msdb.dbo.sysjobschedules js ON j.job_id = js.job_id
+JOIN msdb.dbo.sysschedules s ON js.schedule_id = s.schedule_id
+ORDER BY j.name, s.name;
+----------------------------
+SET NOCOUNT ON;
+
+SELECT
+    name AS LinkedServerName,
+    product,
+    provider,
+    data_source,
+    provider_string,
+    is_linked,
+    is_remote_login_enabled
+FROM sys.servers
+WHERE is_linked = 1
+ORDER BY name;
+
+
