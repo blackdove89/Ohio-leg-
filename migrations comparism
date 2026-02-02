@@ -302,6 +302,17 @@ WHERE a.SystemName IN (
   AND ag.IsEnabled = 1
   AND uam.IsEnabled = 1
   AND u.IsEnabled = 1;
+--------------------------------------
+-- SAFE validation
+SELECT DISTINCT
+    a.Id,
+    a.SystemName,
+    a.Name
+FROM Attributes a
+WHERE a.SystemName LIKE '%toohleg%'
+   OR a.Name LIKE '%toohleg%'
+   OR a.SystemName LIKE '%roster%';
+
 
 
 
