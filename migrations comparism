@@ -144,6 +144,30 @@ JOIN sys.database_principals pr
     ON pe.grantee_principal_id = pr.principal_id
 WHERE pr.name NOT IN ('dbo','guest','sys','INFORMATION_SCHEMA')
 ORDER BY pr.name, pe.permission_name;
+----------------------------
+--
+SELECT
+    @@SERVERNAME AS ServerName,
+    DB_NAME() AS DatabaseName,
+    pr.name AS UserName,
+    pr.type_desc AS UserType,
+    pe.class_desc AS PermissionClass,     -- DATABASE / SCHEMA / OBJECT_OR_COLUMN
+    pe.permission_name,
+    pe.state_desc,
+    CASE 
+        WHEN pe.class_desc = 'OBJECT_OR_COLUMN' THEN OBJECT_SCHEMA_NAME(pe.major_id)
+        WHEN pe.class_desc = 'SCHEMA' THEN SCHEMA_NAME(pe.major_id)
+        ELSE NULL
+    END AS ScopeSchema,
+    CASE 
+        WHEN pe.class_desc = 'OBJECT_OR_COLUMN' THEN OBJECT_NAME(pe.major_id)
+        ELSE NULL
+    END AS ScopeObject
+FROM sys.database_permissions pe
+JOIN sys.database_principals pr
+    ON pe.grantee_principal_id = pr.principal_id
+WHERE pr.name NOT IN ('dbo','guest','sys','INFORMATION_SCHEMA')
+ORDER BY pr.name, pe.class_desc, pe.permission_name, pe.state_desc, ScopeSchema, ScopeObject;
 
 
 
