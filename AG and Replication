@@ -1,0 +1,161 @@
+AG and Replciation
+--------------------------------------
+--ag and replication
+--Replica + failover/read-only routing settings (SAFE)
+SET NOCOUNT ON;
+
+SELECT
+  Category='AG|Replica',
+  ItemKey = CONCAT(ag.name,'|',ar.replica_server_name),
+  Property='availability_mode/failover_mode/backup_priority/connection/seeding',
+  Value = CONCAT(
+      ar.availability_mode_desc,'|',
+      ar.failover_mode_desc,'|',
+      ar.backup_priority,'|',
+      ar.secondary_role_allow_connections_desc,'|',
+      ar.seeding_mode_desc
+  )
+FROM sys.availability_groups ag
+JOIN sys.availability_replicas ar
+  ON ag.group_id = ar.group_id
+ORDER BY ag.name, ar.replica_server_name;
+------------------------------
+--AG listener(s) + ports (SAFE)
+SET NOCOUNT ON;
+
+SELECT
+  Category='AG|Listener',
+  ItemKey = CONCAT(ag.name,'|',agl.dns_name),
+  Property='port/ip',
+  Value = CONCAT(agl.port,'|',ip.ip_address)
+FROM sys.availability_groups ag
+JOIN sys.availability_group_listeners agl
+  ON ag.group_id = agl.group_id
+LEFT JOIN sys.availability_group_listener_ip_addresses ip
+  ON agl.listener_id = ip.listener_id
+ORDER BY ag.name, agl.dns_name, ip.ip_address;
+----------------------------------
+--Database-level AG state (SAFE)
+SET NOCOUNT ON;
+
+SELECT
+  Category='AG|DBState',
+  ItemKey = CONCAT(ag.name,'|',adc.database_name),
+  Property='sync_state/health/is_suspended',
+  Value = CONCAT(
+      drs.synchronization_state_desc,'|',
+      drs.synchronization_health_desc,'|',
+      drs.is_suspended
+  )
+FROM sys.availability_groups ag
+JOIN sys.availability_databases_cluster adc
+  ON ag.group_id = adc.group_id
+JOIN sys.dm_hadr_database_replica_states drs
+  ON adc.group_database_id = drs.group_database_id
+ORDER BY ag.name, adc.database_name;
+-----------------------------------
+--Replication role flags (SAFE)
+SET NOCOUNT ON;
+
+SELECT Category='Repl|Role', ItemKey='IsDistributor', Property='value', Value=CONVERT(varchar(10), SERVERPROPERTY('IsDistributor'))
+UNION ALL
+SELECT 'Repl|Role','IsPublished','value',CONVERT(varchar(10), SERVERPROPERTY('IsPublished'))
+UNION ALL
+SELECT 'Repl|Role','IsSubscribed','value',CONVERT(varchar(10), SERVERPROPERTY('IsSubscribed'));
+
+--Distributor basics (run only where distribution exists) (SAFE)
+IF DB_ID('distribution') IS NOT NULL
+BEGIN
+  USE distribution;
+  SET NOCOUNT ON;
+
+  SELECT
+    Category='Repl|Distributor',
+    ItemKey='MSdistributiondbs|' + name,
+    Property='min/max/history_retention',
+    Value=CONCAT(min_distretention,'|',max_distretention,'|',history_retention)
+  FROM dbo.MSdistributiondbs;
+
+  SELECT
+    Category='Repl|Distributor',
+    ItemKey='MSdistpublishers|' + name,
+    Property='distribution_db/working_directory/security',
+    Value=CONCAT(distribution_db,'|',COALESCE(working_directory,''),'|',security_mode)
+  FROM dbo.MSdistpublishers;
+END
+--------------------------------------
+--Replication Agent jobs (Log Reader/Snapshot/Distribution/cleanup) (SAFE)
+--This is the money script. Run on each Publisher instance.
+SET NOCOUNT ON;
+
+SELECT
+  Category='Repl|AgentJob',
+  ItemKey=j.name,
+  Property='enabled/owner/category',
+  Value=CONCAT(j.enabled,'|',SUSER_SNAME(j.owner_sid),'|',c.name)
+FROM msdb.dbo.sysjobs j
+JOIN msdb.dbo.syscategories c ON j.category_id=c.category_id
+WHERE c.name LIKE 'REPL-%'
+ORDER BY j.name;
+-------------------------------------
+--Replication Agent job step command fingerprints (SAFE)
+SET NOCOUNT ON;
+
+SELECT
+  Category='Repl|JobStepCommand',
+  ItemKey = CONCAT(j.name,'|Step',js.step_id,'|',js.step_name),
+  Property='command_checksum',
+  Value = CONVERT(varchar(50), CHECKSUM(js.command))
+FROM msdb.dbo.sysjobsteps js
+JOIN msdb.dbo.sysjobs j ON js.job_id = j.job_id
+JOIN msdb.dbo.syscategories c ON j.category_id=c.category_id
+WHERE c.name LIKE 'REPL-%'
+ORDER BY j.name, js.step_id;
+---------------------------------------
+--Publications + articles + subscriptions (run across ALL published DBs) (SAFE)
+--This is the money script. Run on each Publisher instance.
+SET NOCOUNT ON;
+
+DECLARE @sql nvarchar(max) = N'';
+
+SELECT @sql = @sql + N'
+IF DB_ID(''' + REPLACE(d.name,'''','''''') + N''') IS NOT NULL
+BEGIN
+  USE ' + QUOTENAME(d.name) + N';
+
+  IF OBJECT_ID(''dbo.syspublications'') IS NOT NULL
+  BEGIN
+    SELECT
+      Category = ''Repl|Publication'',
+      ItemKey  = DB_NAME() + ''|'' + p.name,
+      Property = ''status/allow_push/allow_pull/independent_agent/immediate_sync'',
+      Value    = CONCAT(p.status,''|'',p.allow_push,''|'',p.allow_pull,''|'',p.independent_agent,''|'',p.immediate_sync)
+    FROM dbo.syspublications p;
+
+    SELECT
+      Category = ''Repl|Article'',
+      ItemKey  = DB_NAME() + ''|'' + p.name + ''|'' + a.name,
+      Property = ''dest_object/type/status/filter'',
+      Value    = CONCAT(a.dest_object,''|'',a.type,''|'',a.status,''|'',COALESCE(a.filter,''))
+    FROM dbo.sysarticles a
+    JOIN dbo.syspublications p ON a.pubid = p.pubid;
+
+    SELECT
+      Category = ''Repl|Subscription'',
+      ItemKey  = DB_NAME() + ''|'' + p.name + ''|'' + s.srvname + ''|'' + s.dest_db,
+      Property = ''status/subscriber_type/sync_type'',
+      Value    = CONCAT(s.status,''|'',s.subscriber_type,''|'',s.sync_type)
+    FROM dbo.syssubscriptions s
+    JOIN dbo.syspublications p ON s.pubid = p.pubid;
+  END
+END;
+'
+FROM sys.databases d
+WHERE d.database_id > 4
+  AND d.state_desc = 'ONLINE';
+
+EXEC sys.sp_executesql @sql;
+
+
+
+
