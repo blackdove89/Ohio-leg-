@@ -247,6 +247,230 @@ WHERE type IN ('S','U','G')
   AND name NOT IN ('dbo','guest','sys','INFORMATION_SCHEMA')
 ORDER BY name;
 -------------------
+--sp_configure full (already started, but use this normalized view)
+SET NOCOUNT ON;
+
+SELECT
+  Category='sp_configure',
+  ItemKey = name,
+  Property='value_in_use',
+  Value = CONVERT(varchar(50), value_in_use)
+FROM sys.configurations
+UNION ALL
+SELECT
+  'sp_configure',
+  name,
+  'value_configured',
+  CONVERT(varchar(50), value)
+FROM sys.configurations
+ORDER BY 1,2,3;
+-----------------------------
+--Server triggers
+SET NOCOUNT ON;
+
+SELECT
+  Category='ServerTrigger',
+  ItemKey = name,
+  Property='is_disabled',
+  Value = CONVERT(varchar(10), is_disabled)
+FROM sys.server_triggers
+ORDER BY name;
+-----------------------------
+--Enodpoint (always on\hadr)
+SET NOCOUNT ON;
+
+SELECT
+  Category='Endpoint',
+  ItemKey = e.name,
+  Property='type/state/protocol',
+  Value = CONCAT(e.type_desc,'|',e.state_desc,'|',e.protocol_desc)
+FROM sys.endpoints e
+ORDER BY e.name;
+-----------------------------
+--Agent proxies + credentials (very often drift)
+SET NOCOUNT ON;
+
+SELECT
+  Category='Credential',
+  ItemKey = c.name,
+  Property='identity',
+  Value = c.credential_identity
+FROM sys.credentials c
+ORDER BY c.name;
+
+SELECT
+  Category='AgentProxy',
+  ItemKey = p.name,
+  Property='credential_id/is_enabled',
+  Value = CONCAT(p.credential_id,'|',p.is_enabled)
+FROM msdb.dbo.sysproxies p
+ORDER BY p.name;
+-----------------------------
+--Server permissions granted to logins (missed a lot)
+SET NOCOUNT ON;
+
+SELECT
+  Category='ServerPermission',
+  ItemKey = CONCAT(grantee.name,'|',perm.permission_name,'|',perm.state_desc),
+  Property='grantor',
+  Value = grantor.name
+FROM sys.server_permissions perm
+JOIN sys.server_principals grantee ON perm.grantee_principal_id = grantee.principal_id
+JOIN sys.server_principals grantor ON perm.grantor_principal_id = grantor.principal_id
+WHERE grantee.type IN ('S','U','G')
+ORDER BY grantee.name, perm.permission_name;
+---------------------------------
+--Orphan users for ALL user DBs (not one db)
+SET NOCOUNT ON;
+
+DECLARE @sql nvarchar(max) = N'';
+
+SELECT @sql = @sql + N'
+USE ' + QUOTENAME(name) + N';
+SELECT
+  Category = ''OrphanUser'',
+  ItemKey  = DB_NAME() + ''|'' + dp.name,
+  Property = ''sid_match'',
+  Value    = CASE WHEN sp.sid IS NULL THEN ''NO_LOGIN_MATCH'' ELSE ''MATCHED'' END
+FROM sys.database_principals dp
+LEFT JOIN sys.server_principals sp ON dp.sid = sp.sid
+WHERE dp.type IN (''S'',''U'',''G'')
+  AND dp.name NOT IN (''dbo'',''guest'',''sys'',''INFORMATION_SCHEMA'');'
+FROM sys.databases
+WHERE database_id > 4 AND state_desc = 'ONLINE';
+
+EXEC sys.sp_executesql @sql;
+---------------------------------------
+--Job steps (subsystem, db, proxy, actions)
+SET NOCOUNT ON;
+
+SELECT
+  Category='JobStep',
+  ItemKey = CONCAT(j.name,'|Step',js.step_id,'|',js.step_name),
+  Property='subsystem/db/proxy/success/fail',
+  Value = CONCAT(js.subsystem,'|',COALESCE(js.database_name,''),'|',COALESCE(CONVERT(varchar(10),js.proxy_id),''),
+                 '|S:',js.on_success_action,'|F:',js.on_fail_action)
+FROM msdb.dbo.sysjobsteps js
+JOIN msdb.dbo.sysjobs j ON js.job_id = j.job_id
+ORDER BY j.name, js.step_id;
+-----------------------------------------
+--Command checksum (detect silent drift)
+SET NOCOUNT ON;
+
+SELECT
+  Category='JobStepCommand',
+  ItemKey = CONCAT(j.name,'|Step',js.step_id,'|',js.step_name),
+  Property='command_checksum',
+  Value = CONVERT(varchar(50), CHECKSUM(js.command))
+FROM msdb.dbo.sysjobsteps js
+JOIN msdb.dbo.sysjobs j ON js.job_id = j.job_id
+ORDER BY j.name, js.step_id;
+-------------------------------------------
+--Linked server login mappings (people forget this)
+SET NOCOUNT ON;
+
+SELECT
+  Category='LinkedServerLogin',
+  ItemKey = CONCAT(s.name,'|Local:',COALESCE(sp.name,'(NULL)')),
+  Property='uses_self/remote_name',
+  Value = CONCAT(lsl.uses_self_credential,'|',COALESCE(lsl.remote_name,''))
+FROM sys.servers s
+JOIN sys.linked_logins lsl ON s.server_id = lsl.server_id
+LEFT JOIN sys.server_principals sp ON lsl.local_principal_id = sp.principal_id
+WHERE s.is_linked = 1
+ORDER BY s.name, sp.name;
+-----------------------------------------------
+--SSISDB (Folders/Projects/Environments/References)
+/* Run these on both servers in SSISDB.
+5.1 Folders + projects*/
+USE SSISDB;
+SET NOCOUNT ON;
+
+SELECT
+  Category='SSIS|Folder',
+  ItemKey=f.name,
+  Property='description',
+  Value=COALESCE(f.description,'')
+FROM catalog.folders f
+UNION ALL
+SELECT
+  'SSIS|Project',
+  CONCAT(f.name,'|',p.name),
+  'deployed_by/deployed_time',
+  CONCAT(COALESCE(p.deployed_by_name,''),'|',CONVERT(varchar(19),p.deployed_time,120))
+FROM catalog.projects p
+JOIN catalog.folders f ON p.folder_id=f.folder_id
+ORDER BY 1,2,3;
+--------------------------------------------------
+--Environments + variables (sensitive masked)
+USE SSISDB;
+SET NOCOUNT ON;
+
+SELECT
+  Category='SSIS|EnvVar',
+  ItemKey=CONCAT(f.name,'|',e.name,'|',v.name),
+  Property='type/sensitive/value',
+  Value=CONCAT(v.type,'|',v.sensitive,'|',
+               CASE WHEN v.sensitive=1 THEN '<SENSITIVE>'
+                    ELSE COALESCE(CONVERT(varchar(4000),v.value),'<NULL>') END)
+FROM catalog.environment_variables v
+JOIN catalog.environments e ON v.environment_id=e.environment_id
+JOIN catalog.folders f ON e.folder_id=f.folder_id
+ORDER BY 1,2,3;
+--------------------------------------------------
+--Project → Environment references
+USE SSISDB;
+SET NOCOUNT ON;
+
+SELECT
+  Category='SSIS|EnvReference',
+  ItemKey=CONCAT(f.name,'|',p.name,'|',er.environment_name),
+  Property='reference_type',
+  Value=CONVERT(varchar(10),er.reference_type)
+FROM catalog.environment_references er
+JOIN catalog.projects p ON er.project_id=p.project_id
+JOIN catalog.folders f ON p.folder_id=f.folder_id
+ORDER BY 1,2,3;
+-------------------------------------------------
+--Phase 6 — Replication (publisher/distributor/subscriber + jobs)
+--6.1 Replication role flags
+SET NOCOUNT ON;
+
+SELECT Category='Replication', ItemKey='IsDistributor', Property='value', Value=CONVERT(varchar(10), SERVERPROPERTY('IsDistributor'))
+UNION ALL
+SELECT 'Replication','IsPublished','value',CONVERT(varchar(10), SERVERPROPERTY('IsPublished'))
+UNION ALL
+SELECT 'Replication','IsSubscribed','value',CONVERT(varchar(10), SERVERPROPERTY('IsSubscribed'));
+---
+SET NOCOUNT ON;
+
+SELECT
+  Category='Replication|AgentJob',
+  ItemKey=j.name,
+  Property='enabled/owner/category',
+  Value=CONCAT(j.enabled,'|',SUSER_SNAME(j.owner_sid),'|',c.name)
+FROM msdb.dbo.sysjobs j
+JOIN msdb.dbo.syscategories c ON j.category_id=c.category_id
+WHERE c.name LIKE 'REPL-%'
+ORDER BY j.name;
+---------------------------------
+--Distributor settings (if distribution exists)
+IF DB_ID('distribution') IS NOT NULL
+BEGIN
+  USE distribution;
+  SET NOCOUNT ON;
+
+  SELECT
+    Category='Replication|Distributor',
+    ItemKey='MSdistributiondbs',
+    Property='name/min/max',
+    Value=CONCAT(name,'|',min_distretention,'|',max_distretention)
+  FROM dbo.MSdistributiondbs;
+END
+
+
+
+
 
 
 
