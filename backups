@@ -1,0 +1,5 @@
+$Environment = "09-Production"
+
+Get-DbaRegServer -SqlInstance cmsk1\sql01 -Group $Environment | Get-DbaAgentJob -Category 'AGODatabaseBackup-Full' -ExcludeDisabledJobs | Out-GridView -Title "Full Backup"
+Get-DbaRegServer -SqlInstance cmsk1\sql01 -Group $Environment | Get-DbaAgentJob -Category 'AGODatabaseBackup-Log' -ExcludeDisabledJobs | Out-GridView -Title "Log Backup"
+#Get-DbaRegServer -SqlInstance cmsk1\sql01 -Group 05-Production | Get-DbaAgentJob -Job "DatabaseBackup - LOG" | Out-Gridview
