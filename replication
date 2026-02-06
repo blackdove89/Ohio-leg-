@@ -1,0 +1,132 @@
+-- Enabling the replication database
+use master
+exec sp_replicationdboption @dbname = N'METRICCable-CableRights', @optname = N'publish', @value = N'true'
+GO
+
+-- Adding the snapshot publication
+use [METRICCable-CableRights]
+exec sp_addpublication @publication = N'DW_METRICCable_CR_Pub', @description = N'Snapshot publication of database from Publisher.', @sync_method = N'native', @retention = 0, @allow_push = N'true', @allow_pull = N'true', @allow_anonymous = N'false', @enabled_for_internet = N'false', @snapshot_in_defaultfolder = N'true', @compress_snapshot = N'false', @ftp_port = 21, @ftp_login = N'anonymous', @allow_subscription_copy = N'false', @add_to_active_directory = N'false', @repl_freq = N'snapshot', @status = N'active', @independent_agent = N'true', @immediate_sync = N'false', @allow_sync_tran = N'false', @autogen_sync_procs = N'false', @allow_queued_tran = N'false', @allow_dts = N'false', @replicate_ddl = 0
+GO
+
+
+exec sp_addpublication_snapshot @publication = N'DW_METRICCable_CR_Pub', @frequency_type = 1, @frequency_interval = 0, @frequency_relative_interval = 0, @frequency_recurrence_factor = 0, @frequency_subday = 0, @frequency_subday_interval = 0, @active_start_time_of_day = 0, @active_end_time_of_day = 235959, @active_start_date = 0, @active_end_date = 0, @job_login = null, @job_password = null, @publisher_security_mode = 1
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'agosauser'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'NYC-AG\SQL_DW19P01'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'NYC-AG\$CGA200-1DSOHGHSRMFL'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'NYC-AG\dren'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'NYC-AG\SQL_SQL2k17Svc'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N''
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'NYC-AG\SQLSentrySVC'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'OHI\DBAAdmins'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'OHI\SQL_=SQLProd01SVC'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'NYC-AG\SQL_AGOSQL19P1'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'NYC-AG\mjoa'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'NYC-AG\tenable_scanner'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'NT SERVICE\Winmgmt'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'NT SERVICE\SQLWriter'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'NT SERVICE\SQLAgent$SQLPRD01'
+GO
+exec sp_grant_publication_access @publication = N'DW_METRICCable_CR_Pub', @login = N'NT SERVICE\MSSQL$SQLPRD01'
+GO
+
+-- Adding the snapshot articles
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'Contact', @source_owner = N'Cable', @source_object = N'Contact', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'Contact', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'ContactAddress', @source_owner = N'Cable', @source_object = N'ContactAddress', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'ContactAddress', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'Matter', @source_owner = N'Cable', @source_object = N'Matter', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'Matter', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'MatterClient', @source_owner = N'Cable', @source_object = N'MatterClient', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'MatterClient', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'MatterClientContact', @source_owner = N'Cable', @source_object = N'MatterClientContact', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'MatterClientContact', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'MatterCloseHistory', @source_owner = N'Cable', @source_object = N'MatterCloseHistory', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'MatterCloseHistory', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'MatterFieldset', @source_owner = N'Cable', @source_object = N'MatterFieldset', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'MatterFieldset', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'MatterFieldsetJudge', @source_owner = N'Cable', @source_object = N'MatterFieldsetJudge', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'MatterFieldsetJudge', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'MatterPartyInvolvement', @source_owner = N'Cable', @source_object = N'MatterPartyInvolvement', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'MatterPartyInvolvement', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'MatterPersonnel', @source_owner = N'Cable', @source_object = N'MatterPersonnel', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'MatterPersonnel', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'MatterPersonnelRole', @source_owner = N'Cable', @source_object = N'MatterPersonnelRole', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'MatterPersonnelRole', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'MatterStatus', @source_owner = N'Cable', @source_object = N'MatterStatus', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'MatterStatus', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'MatterSubType', @source_owner = N'Cable', @source_object = N'MatterSubType', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'MatterSubType', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'MatterType', @source_owner = N'Cable', @source_object = N'MatterType', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'MatterType', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'Party', @source_owner = N'Cable', @source_object = N'Party', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'Party', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'PartyAddress', @source_owner = N'Cable', @source_object = N'PartyAddress', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'PartyAddress', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'PartyAttorney', @source_owner = N'Cable', @source_object = N'PartyAttorney', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'PartyAttorney', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'PartyEmployment', @source_owner = N'Cable', @source_object = N'PartyEmployment', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'PartyEmployment', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'PartyEmploymentType', @source_owner = N'Cable', @source_object = N'PartyEmploymentType', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'PartyEmploymentType', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'PartySubType', @source_owner = N'Cable', @source_object = N'PartySubType', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'PartySubType', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'PartyType', @source_owner = N'Cable', @source_object = N'PartyType', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'PartyType', @destination_owner = N'cr', @status = 24, @vertical_partition = N'false', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+GO
+use [METRICCable-CableRights]
+exec sp_addarticle @publication = N'DW_METRICCable_CR_Pub', @article = N'User', @source_owner = N'Cable', @source_object = N'User', @type = N'logbased', @description = N'', @creation_script = N'', @pre_creation_cmd = N'drop', @schema_option = 0x00000000080350DD, @identityrangemanagementoption = N'manual', @destination_table = N'User', @destination_owner = N'cr', @status = 24, @vertical_partition = N'true', @ins_cmd = N'SQL', @del_cmd = N'SQL', @upd_cmd = N'SQL'
+
+-- Adding the article's partition column(s)
+exec sp_articlecolumn @publication = N'DW_METRICCable_CR_Pub', @article = N'User', @column = N'Id', @operation = N'add', @force_invalidate_snapshot = 1, @force_reinit_subscription = 1
+exec sp_articlecolumn @publication = N'DW_METRICCable_CR_Pub', @article = N'User', @column = N'CreatedOn', @operation = N'add', @force_invalidate_snapshot = 1, @force_reinit_subscription = 1
+exec sp_articlecolumn @publication = N'DW_METRICCable_CR_Pub', @article = N'User', @column = N'LastModifiedOn', @operation = N'add', @force_invalidate_snapshot = 1, @force_reinit_subscription = 1
+exec sp_articlecolumn @publication = N'DW_METRICCable_CR_Pub', @article = N'User', @column = N'ContactId', @operation = N'add', @force_invalidate_snapshot = 1, @force_reinit_subscription = 1
+exec sp_articlecolumn @publication = N'DW_METRICCable_CR_Pub', @article = N'User', @column = N'UserName', @operation = N'add', @force_invalidate_snapshot = 1, @force_reinit_subscription = 1
+exec sp_articlecolumn @publication = N'DW_METRICCable_CR_Pub', @article = N'User', @column = N'IsActive', @operation = N'add', @force_invalidate_snapshot = 1, @force_reinit_subscription = 1
+exec sp_articlecolumn @publication = N'DW_METRICCable_CR_Pub', @article = N'User', @column = N'IsSystemUser', @operation = N'add', @force_invalidate_snapshot = 1, @force_reinit_subscription = 1
+exec sp_articlecolumn @publication = N'DW_METRICCable_CR_Pub', @article = N'User', @column = N'IsMETRICUser', @operation = N'add', @force_invalidate_snapshot = 1, @force_reinit_subscription = 1
+
+-- Adding the article synchronization object
+exec sp_articleview @publication = N'DW_METRICCable_CR_Pub', @article = N'User', @view_name = N'syncobj_0x4637313146423731', @filter_clause = N'', @force_invalidate_snapshot = 1, @force_reinit_subscription = 1
+GO
+
+-- Adding the snapshot subscriptions
+use [METRICCable-CableRights]
+exec sp_addsubscription @publication = N'DW_METRICCable_CR_Pub', @subscriber = N'DW19P01\SQLPRD01', @destination_db = N'DWHUB', @subscription_type = N'Push', @sync_type = N'automatic', @article = N'all', @update_mode = N'read only', @subscriber_type = 0
+exec sp_addpushsubscription_agent @publication = N'DW_METRICCable_CR_Pub', @subscriber = N'DW19P01\SQLPRD01', @subscriber_db = N'DWHUB', @job_login = null, @job_password = null, @subscriber_security_mode = 1, @frequency_type = 64, @frequency_interval = 1, @frequency_relative_interval = 1, @frequency_recurrence_factor = 0, @frequency_subday = 4, @frequency_subday_interval = 5, @active_start_time_of_day = 0, @active_end_time_of_day = 235959, @active_start_date = 0, @active_end_date = 0, @dts_package_location = N'Distributor'
+GO
+
