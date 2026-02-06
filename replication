@@ -141,4 +141,23 @@ JOIN distribution.dbo.MSpublications a
     ON s.publication_id = a.publication_id
 JOIN distribution.dbo.MSdistribution_agents p
     ON s.agent_id = p.id;
+********************************** 
+USE distribution;
+
+SELECT
+    da.publisher_db,
+    s.subscriber_db,
+    srv.srvname AS subscriber_server,
+    p.publication,
+    s.subscription_type
+FROM dbo.MSsubscriptions s
+JOIN dbo.MSpublications p
+    ON s.publication_id = p.publication_id
+JOIN dbo.MSdistribution_agents da
+    ON s.agent_id = da.id
+JOIN master.dbo.sysservers srv
+    ON s.subscriber_id = srv.srvid;
+************************************* 
+USE distribution;
+EXEC sp_help 'dbo.MSsubscriptions';
 
