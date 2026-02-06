@@ -30,4 +30,7 @@ JOIN master.dbo.sysservers srv
 ************************************* 
 USE distribution;
 EXEC sp_help 'dbo.MSsubscriptions';
+***********************************
+Yes, a SQL Server 2019 Distributor supporting a SQL Server 2022 Publication is supported, provided the general replication backward compatibility rules are followed. 
+According to Microsoft's replication backward compatibility guidelines, the key requirements are that the Distributor must be of equal or higher version than the Publisher, and the Publisher/Distributor must be within two versions of the Subscriber. 
 
