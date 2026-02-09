@@ -1,0 +1,12 @@
+SELECT
+    d.name,
+    d.state_desc,
+    mf.file_id,
+    mf.type_desc,
+    mf.name AS logical_name,
+    mf.physical_name
+FROM sys.databases d
+JOIN sys.master_files mf
+    ON d.database_id = mf.database_id
+WHERE d.name = N'Conversion'
+ORDER BY mf.file_id;
