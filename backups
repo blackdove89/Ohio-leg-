@@ -1,5 +1,64 @@
 $Environment = "09-Production"
 
-Get-DbaRegServer -SqlInstance cmsk1\sql01 -Group $Environment | Get-DbaAgentJob -Category 'AGODatabaseBackup-Full' -ExcludeDisabledJobs | Out-GridView -Title "Full Backup"
-Get-DbaRegServer -SqlInstance cmsk1\sql01 -Group $Environment | Get-DbaAgentJob -Category 'AGODatabaseBackup-Log' -ExcludeDisabledJobs | Out-GridView -Title "Log Backup"
+Get-DbaRegServer -SqlInstance cmsk1\sql01 -Group $Environment | Get-DbaAgentJob -Category 'ADatabaseBackup-Full' -ExcludeDisabledJobs | Out-GridView -Title "Full Backup"
+Get-DbaRegServer -SqlInstance cmsk1\sql01 -Group $Environment | Get-DbaAgentJob -Category 'ADatabaseBackup-Log' -ExcludeDisabledJobs | Out-GridView -Title "Log Backup"
 #Get-DbaRegServer -SqlInstance cmsk1\sql01 -Group 05-Production | Get-DbaAgentJob -Job "DatabaseBackup - LOG" | Out-Gridview
+
+=================================
+--Step 1 (create folder)
+mkdir \\back3260\SQLBackups\PreProduction\OndemandBkp\Share\%DATE:~10,4%-%DATE:~4,2%-%DATE:~7,2%
+SET "FOLDER=\\back3260\SQLBackups\PreProduction\OndemandBkp\Share\%DATE:~10,4%-%DATE:~4,2%-%DATE:~7,2%"
+IF NOT EXIST "%FOLDER%" (
+    mkdir "%FOLDER%"
+)
+--Step 2 (backup dbs)
+DECLARE @BackupPath NVARCHAR(4000);
+DECLARE @DatabaseName NVARCHAR(128);
+DECLARE @SQL NVARCHAR(MAX);
+
+----------------------------------------------------------------
+-- Read the output from Step 1
+----------------------------------------------------------------
+SET @BackupPath = N'\\back3260\SQLBackups\PreProduction\OndemandBkp\Share\' +
+CONVERT(varchar(10), GETDATE(),23);
+
+-- Strip the "FolderCreated=" label if it exists
+IF CHARINDEX('FolderCreated=', @BackupPath) > 0
+    SET @BackupPath = SUBSTRING(@BackupPath, CHARINDEX('FolderCreated=', @BackupPath) + 14, 4000);
+
+SET @BackupPath = LTRIM(RTRIM(@BackupPath));
+PRINT 'Using backup folder: ' + @BackupPath;
+
+----------------------------------------------------------------
+-- Ensure folder exists (safety)
+----------------------------------------------------------------
+--EXEC master.dbo.xp_create_subdir @BackupPath;
+
+----------------------------------------------------------------
+-- Databases to back up
+----------------------------------------------------------------
+DECLARE @Databases TABLE (DBName NVARCHAR(128));
+INSERT INTO @Databases (DBName)
+VALUES ('ShiftShare');
+
+
+----------------------------------------------------------------
+-- Loop through and back up each database
+----------------------------------------------------------------
+DECLARE db_cursor CURSOR FOR SELECT DBName FROM @Databases;
+OPEN db_cursor;
+FETCH NEXT FROM db_cursor INTO @DatabaseName;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    SET @SQL = N'BACKUP DATABASE [' + @DatabaseName + N']
+                TO DISK = N''' + @BackupPath + N'\' + @DatabaseName + N'.bak''
+                WITH INIT, COPY_ONLY, COMPRESSION, STATS = 10;';
+    PRINT @SQL;
+    EXEC (@SQL);
+    FETCH NEXT FROM db_cursor INTO @DatabaseName;
+END;
+
+CLOSE db_cursor;
+DEALLOCATE db_cursor;
+
