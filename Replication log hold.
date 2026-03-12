@@ -1,0 +1,26 @@
+Step	1. Run log re use wait 
+SELECT name, log_reuse_wait_desc FROM sys.databases 
+
+If you have replication holds
+
+Step	2.  EXEC sp_repltrans  (against database)
+
+Results set will look like 
+xdesid			               xact_seqno
+0x0000171B000089500001	0x0000171B000089AC0001
+0x0000171B00008A770001	0x0000171B00008A980001
+0x0000185F0003C16A0001	0x0000185F0003C1DC0001
+0x000019A90002C4A00001	0x000019A90002C59F0001
+
+Step	3.  EXEC sp_repldone @xactid = 0x000019A90002C4A00001, @xact_segno = NULL, @numtrans = 0, @TIME = 0, @EGCC = 1 
+(put each xdesid from step 2 in the @xactid = 0x000019A90002C4A00001 ) --run it for all the xdesid one by one against each database
+
+Step	4. Take log backup of the database and shrink (may need to do it a few times)
+
+Step	5. optional
+EXEC sp_changepublication
+@Publication='DW_CP_Pub',
+@Property=N'replicate_ddl',
+@value=0
+
+Finally run log reuse wait again to verify 
