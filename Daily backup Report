@@ -1,3 +1,31 @@
+distinct path 
+-- ============================================================
+-- SHOWS PATH STRUCTURE PATTERNS ONLY
+-- Replaces actual server/db names with their character length
+-- Safe to paste back -- no real names exposed
+-- ============================================================
+SELECT DISTINCT
+    -- Shows the path structure up to Production\ then masks the rest
+    LEFT(bmf.physical_device_name, 
+         CHARINDEX('Production', bmf.physical_device_name) + 9)  AS PathUpToProduction,
+    -- Shows how deep the folder goes after Production\
+    LEN(bmf.physical_device_name) - 
+         CHARINDEX('Production', bmf.physical_device_name)        AS CharsAfterProduction,
+    bs.type                                                        AS BackupType,
+    COUNT(*)                                                       AS BackupCount
+FROM msdb.dbo.backupmediafamily bmf
+INNER JOIN msdb.dbo.backupset bs
+    ON bmf.media_set_id = bs.media_set_id
+WHERE bs.backup_finish_date >= DATEADD(DAY, -3, GETDATE())
+GROUP BY
+    LEFT(bmf.physical_device_name,
+         CHARINDEX('Production', bmf.physical_device_name) + 9),
+    LEN(bmf.physical_device_name) - 
+         CHARINDEX('Production', bmf.physical_device_name),
+    bs.type
+ORDER BY
+    bs.type,
+    PathUpToProduction;
 -- ============================================================
 -- SIDE BY SIDE COMPARISON
 -- Shows Full backups WITH and WITHOUT the path filter
