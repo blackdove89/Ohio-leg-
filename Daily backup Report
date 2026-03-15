@@ -1,3 +1,25 @@
+
+declare @BackupLocation nvarchar(max) = '\\ny.state.ny.us\Apps\SQLBackups_3260_Daily\Production'
+declare @BackupCleanupTime int = 120
+if day(getdate()) = 1
+begin
+  set @BackupLocation = '\\nyofsprd666\SQLBACKUPS_Monthly2\Production'
+  set @BackupCleanupTime = 8760;
+end
+
+EXECUTE dbo.DatabaseBackup
+
+  @Databases = 'All_DATABASES', 
+  @Directory = @BackupLocation,
+  @BackupType = 'FULL',
+  @Verify = 'Y',
+  @LogToTable = 'Y',
+  @OverrideBackupPreference = 'N',
+  @CopyOnly = 'Y',
+  @Compress = 'Y',
+  @DatabasesInParallel =  'Y',
+  @CleanupTime = @BackupCleanupTime;
+
 -- ============================================================
 -- FULL PICTURE -- every backup type and copy_only combination
 -- Shows exactly what msdb knows about across all databases
