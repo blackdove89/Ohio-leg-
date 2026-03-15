@@ -1,4 +1,53 @@
+-- ============================================================
+-- FIND OLA'S CommandLog TABLE
+-- Ola installs into whichever database you chose at setup
+-- Usually master or a dedicated DBA database like dbadb
+-- Run this on one of your production servers
+-- ============================================================
 
+-- STEP 1: Find which database has CommandLog
+SELECT 
+    name AS DatabaseName
+FROM 
+    master.sys.databases
+WHERE 
+    name IN (
+        SELECT DISTINCT 
+            PARSENAME(object_id, 1) 
+        FROM 
+            sys.objects
+    )
+
+-- Simpler approach -- just check the most common locations
+SELECT 'master'     AS Location, COUNT(*) AS HasCommandLog 
+FROM master.sys.objects WHERE name = 'CommandLog'
+UNION ALL
+SELECT 'dbadb'      AS Location, COUNT(*) AS HasCommandLog 
+FROM dbadb.sys.objects WHERE name = 'CommandLog'
+UNION ALL
+SELECT 'msdb'       AS Location, COUNT(*) AS HasCommandLog 
+FROM msdb.sys.objects WHERE name = 'CommandLog';
+====================
+
+-- ============================================================
+-- STEP 2: Once you find it, look at what CommandLog contains
+-- Replace [master] with whichever database has CommandLog
+-- ============================================================
+SELECT TOP 20
+    DatabaseName,
+    CommandType,        -- BACKUP_DATABASE = Full, BACKUP_LOG = Log
+    StartTime,
+    EndTime,
+    ErrorNumber,        -- 0 = success, anything else = failure
+    ErrorMessage,
+    Command             -- shows the actual backup command run
+FROM 
+    master.dbo.CommandLog   -- replace master if Ola is elsewhere
+WHERE 
+    CommandType IN ('BACKUP_DATABASE', 'BACKUP_LOG')
+ORDER BY 
+    StartTime DESC;
+==================================================
 declare @BackupLocation nvarchar(max) = '\\ny.state.ny.us\Apps\SQLBackups_3260_Daily\Production'
 declare @BackupCleanupTime int = 120
 if day(getdate()) = 1
