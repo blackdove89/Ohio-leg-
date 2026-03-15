@@ -1,4 +1,45 @@
+-- ============================================================
+-- VALIDATION — Run on ONE production target server first
+-- Confirm it returns what you expect:
+--   * Every ONLINE database appears (except tempdb)
+--   * LastFullBackup reflects backups to your approved paths only
+--   * NULL means no backup exists to those paths (correct behavior)
+-- ============================================================
+SELECT
+    CAST(SERVERPROPERTY('ServerName') AS NVARCHAR(256))                     AS ServerName,
+    db.name                                                                  AS DatabaseName,
+    db.recovery_model_desc                                                   AS RecoveryMode,
+    MAX(CASE WHEN bs.type = 'D' THEN bs.backup_finish_date ELSE NULL END)   AS LastFullBackup,
+    MAX(CASE WHEN bs.type = 'I' THEN bs.backup_finish_date ELSE NULL END)   AS LastDifferential,
+    MAX(CASE WHEN bs.type = 'L' THEN bs.backup_finish_date ELSE NULL END)   AS LastLog
+FROM
+    master.sys.databases db
+    -- Outer LEFT JOIN guarantees every ONLINE DB appears even with zero backup history
+    LEFT JOIN msdb.dbo.backupset bs
+        ON  bs.database_name = db.name
+        -- Only count backups that went to YOUR approved network paths
+        AND bs.media_set_id IN
+            (
+                SELECT DISTINCT bmf.media_set_id
+                FROM   msdb.dbo.backupmediafamily bmf
+                WHERE  bmf.physical_device_name LIKE '\\ny.state.ny.us\%'
+                OR     bmf.physical_device_name LIKE '\\nyofsprd616\%'
+            )
+WHERE
+    db.state_desc = 'ONLINE'
+    AND db.name  != 'tempdb'
+GROUP BY
+    db.name,
+    db.recovery_model_desc
+ORDER BY
+    db.name;
 
+-- ── What to check before moving on ──────────────────────────
+-- 1. Do ALL your online databases appear? (even if LastFullBackup is NULL)
+-- 2. Are NULL values appearing for DBs you know were never backed up
+--    to \\ny.state.ny.us or \\nyofsprd616? That is CORRECT behavior.
+-- 3. Does LastFullBackup show the date you expect from last night?
+-- If all three are yes, the query is validated. Proceed to job creation.
 -- ============================================================
 -- FULL SOLUTION — Run this entire script on agdw19prd001\sqlprd001
 -- It creates:
