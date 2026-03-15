@@ -1,3 +1,18 @@
+-- Check if your Full backups are copy-only
+SELECT TOP 10
+    bs.database_name,
+    bs.backup_finish_date,
+    bs.type,
+    bs.is_copy_only,        -- 1 = copy only, 0 = regular full
+    bmf.physical_device_name
+FROM msdb.dbo.backupmediafamily bmf
+INNER JOIN msdb.dbo.backupset bs
+    ON bmf.media_set_id = bs.media_set_id
+WHERE bs.type = 'D'
+AND   bs.backup_finish_date >= DATEADD(DAY, -3, GETDATE())
+ORDER BY bs.backup_finish_date DESC;
+
+==================
 \\ny.state.ny.us\apps\SQLBackups_3260_Daily\Production\AGOSQL19PC1$AGOMatricPRD\MatricAdv-CVS\FULL_COPY_ONLY
 
 MatricAdv-CVS	FULL	ONLINE	2026-03-05 07:31:18.000	NULL	NULL	10 days ago	?? STALE
