@@ -1,3 +1,24 @@
+-- ============================================================
+-- DIAGNOSTIC STEP 2
+-- See ALL distinct path patterns currently in backupmediafamily
+-- This shows every unique root path being used across all backups
+-- so we can see EXACTLY what the LIKE patterns need to match
+-- ============================================================
+SELECT DISTINCT
+    LEFT(bmf.physical_device_name, 40)   AS PathPrefix,
+    COUNT(*)                              AS BackupCount,
+    MAX(bs.backup_finish_date)            AS MostRecentBackup
+FROM
+    msdb.dbo.backupmediafamily bmf
+    INNER JOIN msdb.dbo.backupset bs
+        ON bs.media_set_id = bmf.media_set_id
+WHERE
+    bs.backup_finish_date >= DATEADD(DAY, -3, GETDATE())  -- last 3 days only
+GROUP BY
+    LEFT(bmf.physical_device_name, 40)
+ORDER BY
+    MostRecentBackup DESC;
+
 Testing
 -- ============================================================
 -- DIAGNOSTIC STEP 1
