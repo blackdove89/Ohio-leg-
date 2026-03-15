@@ -1,3 +1,21 @@
+no filter 
+-- ============================================================
+-- CONFIRM VDI = FULL BACKUPS
+-- Check what backup types are registered under GUID device names
+-- ============================================================
+SELECT
+    bs.type,                    -- D=Full  I=Diff  L=Log
+    COUNT(*)            AS BackupCount,
+    MAX(bs.backup_finish_date)  AS MostRecent
+FROM msdb.dbo.backupmediafamily bmf
+INNER JOIN msdb.dbo.backupset bs
+    ON bmf.media_set_id = bs.media_set_id
+WHERE bmf.physical_device_name NOT LIKE '\\%'   -- everything that is NOT a UNC path
+AND   bs.backup_finish_date >= DATEADD(DAY, -3, GETDATE())
+GROUP BY
+    bs.type;
+
+================
 distinct path 
 -- ============================================================
 -- SHOWS PATH STRUCTURE PATTERNS ONLY
