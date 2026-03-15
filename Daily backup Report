@@ -1,126 +1,272 @@
+-- ============================================================
+-- FULL SOLUTION — Run this entire script on agdw19prd001\sqlprd001
+-- It creates:
+--   1. The staging table (if not exists)
+--   2. The Agent Job with 2 steps + daily schedule
+--   3. Step 1: fan-out collection query (runs on all target servers)
+--   4. Step 2: email report (runs on CMS master)
+-- ============================================================
 
+USE dbadb;
+GO
 
-     (bmf.physical_device_name like '\\ny.state.ny.us\%' or
-      bmf.physical_device_name like '\\nyofsprd666\%'))
-      agdw19prd001\sqlprd001
+-- One-time table setup
+IF OBJECT_ID('dbo.Staging_BackupReport','U') IS NULL
+    CREATE TABLE dbo.Staging_BackupReport (
+        ServerName       NVARCHAR(256),
+        DatabaseName     NVARCHAR(256),
+        RecoveryMode     NVARCHAR(60),
+        LastFullBackup   DATETIME,
+        LastDifferential DATETIME,
+        LastLog          DATETIME,
+        CollectedAt      DATETIME DEFAULT GETDATE()
+    );
+GO
 
-================================
+-- ============================================================
+-- CREATE THE AGENT JOB
+-- ============================================================
+USE msdb;
+GO
 
-We currently have two PowerShell scripts that we run manually every morning. here are both scripts 
+BEGIN TRANSACTION;
 
-#$Environment = "01-Development"
-#$Environment = "02-QA"
-#$Environment = "04-PreProduction"
-$Environment = "09-Production"
+DECLARE @jobId   UNIQUEIDENTIFIER;
+DECLARE @schedId UNIQUEIDENTIFIER;
 
-Get-DbaRegServer -SqlInstance agodw19p01\sqlprd01 -Group $Environment | Get-DbaAgentJob -Category 'AGODatabaseBackup-Full' -ExcludeDisabledJobs | Out-GridView -Title "Full Backup"
-Get-DbaRegServer -SqlInstance agodw19p01\sqlprd01 -Group $Environment | Get-DbaAgentJob -Category 'AGODatabaseBackup-Log' -ExcludeDisabledJobs | Out-GridView -Title "Log Backup"
-#Get-DbaRegServer -SqlInstance agodw19p01\sqlprd01 -Group 05-Production | Get-DbaAgentJob -Job "DatabaseBackup - LOG" | Out-Gridview
+-- Create the job
+EXEC sp_add_job
+    @job_name        = N'Daily Backup Health Report',
+    @enabled         = 1,
+    @description     = N'Collects backup status from all 09-Production servers and emails an HTML report flagging any DB missing a Full backup in the last 24 hours.',
+    @category_name   = N'Database Maintenance',
+    @notify_level_eventlog = 2,   -- log on failure
+    @job_id          = @jobId OUTPUT;
 
- and the other one is 
+-- ============================================================
+-- STEP 1: Collect data from all registered production servers
+-- This step runs as a CMS "multi-server" query.
+-- Set this step's "Run on:" to your 09-Production server group
+-- in the job step properties after creation.
+-- ============================================================
+EXEC sp_add_jobstep
+    @job_id          = @jobId,
+    @step_name       = N'Collect Backup Data From All Servers',
+    @step_id         = 1,
+    @subsystem       = N'TSQL',
+    @database_name   = N'dbadb',    -- on each TARGET server, write to master CMS db via linked server
+    @command         = N'
+-- This query runs on EVERY server in the 09-Production CMS group.
+-- Results are automatically collected back to the master server.
 
-#$Environment = "01-Development"
-#$Environment = "02-QA"
-#$Environment = "04-PreProduction"
-$Environment = "09-Production"
-#$Environment = "FDM"
+-- Clear today''s data for this server only
+DELETE FROM [agdw19prd001\sqlprd001].dbadb.dbo.Staging_BackupReport
+WHERE ServerName = CAST(SERVERPROPERTY(''ServerName'') AS NVARCHAR(256));
 
-$ExportFile = 'C:\Projects\temp\Backup.csv'
-
-$WorkingDir = "C:\DailyMonitor\"
-if(!(Test-Path -Path $WorkingDir )){
-    New-Item -ItemType directory -Path $WorkingDir
-}
-$ExportFile = "$WorkingDir\Backup.csv"
-
-Get-DbaRegServer -SqlInstance 'agodw19p01\sqlprd01' -Group $Environment | Invoke-DbaQuery -Query "SELECT 
-   SERVERPROPERTY('Servername') AS ServerName, 
-   db.name DatabaseName,
-   db.recovery_model_desc RecoveryMode,
-   MAX(CASE WHEN bs.type = 'D' THEN bs.backup_finish_date ELSE NULL END) AS LastFullBackup,
-   MAX(CASE WHEN bs.type = 'I' THEN bs.backup_finish_date ELSE NULL END) AS LastDifferential,
-   MAX(CASE WHEN bs.type = 'L' THEN bs.backup_finish_date ELSE NULL END) AS LastLog
+-- Insert this server''s backup summary
+INSERT INTO [agdw19prd001\sqlprd001].dbadb.dbo.Staging_BackupReport
+    (ServerName, DatabaseName, RecoveryMode, LastFullBackup, LastDifferential, LastLog, CollectedAt)
+SELECT 
+    CAST(SERVERPROPERTY(''ServerName'') AS NVARCHAR(256))                  AS ServerName,
+    db.name                                                                 AS DatabaseName,
+    db.recovery_model_desc                                                  AS RecoveryMode,
+    MAX(CASE WHEN bs.type = ''D'' THEN bs.backup_finish_date ELSE NULL END) AS LastFullBackup,
+    MAX(CASE WHEN bs.type = ''I'' THEN bs.backup_finish_date ELSE NULL END) AS LastDifferential,
+    MAX(CASE WHEN bs.type = ''L'' THEN bs.backup_finish_date ELSE NULL END) AS LastLog,
+    GETDATE()                                                               AS CollectedAt
 FROM 
-  master.sys.databases db 
-  left join (msdb.dbo.backupmediafamily  bmf 
-  INNER JOIN msdb.dbo.backupset bs
-  ON bmf.media_set_id = bs.media_set_id and
-     (bmf.physical_device_name like '\\ny.state.ny.us\%' or
-      bmf.physical_device_name like '\\nyofsprd666\%'))
-  on db.name = bs.database_name
-WHERE
-  db.state_desc = 'ONLINE'
+    master.sys.databases db
+    LEFT JOIN (
+        msdb.dbo.backupmediafamily bmf
+        INNER JOIN msdb.dbo.backupset bs 
+            ON  bmf.media_set_id = bs.media_set_id
+            AND (   bmf.physical_device_name LIKE ''\\ny.state.ny.us\%''
+                 OR bmf.physical_device_name LIKE ''\\nyofsprd616\%'')
+    ) ON db.name = bs.database_name
+WHERE 
+    db.state_desc = ''ONLINE''
+    AND db.name != ''tempdb''
 GROUP BY 
-   db.name,
-   db.recovery_model_desc
-ORDER BY  
-   db.name " |  Export-Csv -Path $ExportFile -NoTypeInformation
+    db.name,
+    db.recovery_model_desc;
+',
+    @on_success_action = 3,   -- go to next step
+    @on_fail_action    = 3;   -- go to next step (so email still fires even if one server is down)
 
-$columns = @{
- ServerName = 'ServerName'
- DatabaseName = 'DatabaseName'
- RecoveryMode = 'RecoveryMode'
- LastFullBackup = 'LastFullBackup'
- LastDifferential = 'LastDifferential'
- LastLog = 'LastLog'
- }
+-- ============================================================
+-- STEP 2: Build HTML report and send email
+-- This step runs on the CMS master server only.
+-- ============================================================
+EXEC sp_add_jobstep
+    @job_id        = @jobId,
+    @step_name     = N'Send HTML Backup Report Email',
+    @step_id       = 2,
+    @subsystem     = N'TSQL',
+    @database_name = N'dbadb',
+    @command       = N'
+USE dbadb;
 
-Import-DbaCsv -Path $ExportFile -SqlInstance 'agodw19p01.ag.state.oh.us\sqlprd01' -Database dbadb -Table Staging_BackupReport -Truncate -ColumnMap $columns
+DECLARE @html       NVARCHAR(MAX);
+DECLARE @subject    NVARCHAR(500);
+DECLARE @alertCount INT;
+DECLARE @totalCount INT;
+DECLARE @runDate    NVARCHAR(30) = CONVERT(NVARCHAR, GETDATE(), 107); -- "Mar 15, 2026"
 
-Invoke-DbaQuery -SqlInstance 'agodw19p01.ny.state.oh.ny\sqlprd01' -Database dbadb -Query "
-with
-BackupDetails as (
-select 
-  row_number() over(partition by DatabaseName order by LastFullBackup desc) FullRowNumber,
-  row_number() over(partition by DatabaseName order by LastLog desc) LogRowNumber,
-  ServerName,
-  DatabaseName,
-  RecoveryMode,
-  LastFullBackup,
-  LastDifferential,
-  LastLog
-from 
-  [dbo].[Staging_BackupReport]
-)
-select
-  bd.ServerName,
-  bd.DatabaseName,
-  bd.RecoveryMode,
-  Bd.LastFullBackup
-from
-  BackupDetails bd
-where
-  bd.FullRowNumber = 1 and
-  bd.DatabaseName not in ('tempdb')
-order by
-  bd.LastFullBackup" | Out-GridView -Title "Full Bakcups"
+-- Count alerts (ONLINE DBs with no Full backup to our paths in last 24 hrs)
+SELECT @alertCount = COUNT(*)
+FROM   dbo.Staging_BackupReport
+WHERE  (LastFullBackup IS NULL OR LastFullBackup < DATEADD(HOUR, -24, GETDATE()));
 
-Invoke-DbaQuery -SqlInstance 'agodw19p01.ny.state.ny.us\sqlprd01' -Database dbadb -Query "
-with
-BackupDetails as (
-select 
-  row_number() over(partition by DatabaseName order by LastFullBackup desc) FullRowNumber,
-  row_number() over(partition by DatabaseName order by LastLog desc) LogRowNumber,
-  ServerName,
-  DatabaseName,
-  RecoveryMode,
-  LastFullBackup,
-  LastDifferential,
-  LastLog
-from 
-  [dbo].[Staging_BackupReport]
-)
-select
-  bd.ServerName,
-  bd.DatabaseName,
-  bd.RecoveryMode,
-  Bd.LastLog
-from
-  BackupDetails bd
-where
-  bd.LogRowNumber = 1 and
-  bd.DatabaseName not in ('tempdb') and
-  bd.RecoveryMode != 'SIMPLE'" | Out-GridView -Title "Log Bakcups"
-One shows us a backup status by just going to a server, and the other one shows us the results of individual databases on all the servers. 
-But what I want to do is create a job or a task schedule on our CMS server agodw19p01 that can go across all the servers and check all the databases and 
-make sure that all the backups were completed. I want this to send a report every morning to our email. How do I go about this?
+SELECT @totalCount = COUNT(*) FROM dbo.Staging_BackupReport;
+
+-- Subject line flags immediately whether anything is wrong
+SET @subject = CASE 
+    WHEN @alertCount > 0 
+    THEN ''⚠️ BACKUP ALERT ['' + CAST(@alertCount AS NVARCHAR) + '' DB(s) at risk] — '' + @runDate
+    ELSE ''✅ All Backups Healthy — '' + @runDate
+END;
+
+-- ── Build HTML ──────────────────────────────────────────────
+SET @html = N''
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body        { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #333; }
+  h2          { color: #1a3c6e; }
+  .summary    { margin-bottom: 16px; }
+  table       { border-collapse: collapse; width: 100%; }
+  th          { background-color: #1a3c6e; color: white; padding: 8px 12px; text-align: left; }
+  td          { padding: 7px 12px; border-bottom: 1px solid #ddd; }
+  tr:hover td { background-color: #f0f4ff; }
+  .alert      { background-color: #fff0f0 !important; font-weight: bold; color: #c0000c; }
+  .ok         { color: #1a7a1a; }
+  .never      { color: #c0000c; font-style: italic; }
+  .footer     { font-size: 11px; color: #888; margin-top: 20px; }
+</style>
+</head>
+<body>
+<h2>📊 Daily Backup Health Report — '' + @runDate + ''</h2>
+<div class="summary">
+  <b>Total Databases Monitored:</b> '' + CAST(@totalCount AS NVARCHAR) + '' &nbsp;|&nbsp;
+  <b>At Risk (Full &gt; 24hrs or Never Backed Up):</b> 
+  <span style="color:'' + CASE WHEN @alertCount > 0 THEN ''#c0000c'' ELSE ''#1a7a1a'' END + ''; font-weight:bold;">
+    '' + CAST(@alertCount AS NVARCHAR) + ''
+  </span>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>Server</th>
+      <th>Database</th>
+      <th>Recovery Mode</th>
+      <th>Last Full Backup</th>
+      <th>Last Differential</th>
+      <th>Last Log Backup</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>'';
+
+-- Append one row per database, alerts sorted to top
+SELECT @html = @html +
+    N''<tr class="'' + 
+        CASE WHEN (LastFullBackup IS NULL OR LastFullBackup < DATEADD(HOUR,-24,GETDATE())) 
+             THEN ''alert'' ELSE '''' END + ''">
+      <td>'' + ISNULL(ServerName,   ''Unknown'') + ''</td>
+      <td>'' + ISNULL(DatabaseName, ''Unknown'') + ''</td>
+      <td>'' + ISNULL(RecoveryMode, ''Unknown'') + ''</td>
+      <td class="'' + CASE WHEN LastFullBackup IS NULL THEN ''never'' 
+                           WHEN LastFullBackup < DATEADD(HOUR,-24,GETDATE()) THEN ''alert'' 
+                           ELSE ''ok'' END + ''">
+           '' + ISNULL(CONVERT(NVARCHAR,LastFullBackup,120), ''⚠ Never'') + ''</td>
+      <td>'' + ISNULL(CONVERT(NVARCHAR,LastDifferential,120),''—'') + ''</td>
+      <td>'' + ISNULL(CONVERT(NVARCHAR,LastLog,120),''—'') + ''</td>
+      <td>'' + CASE WHEN (LastFullBackup IS NULL OR LastFullBackup < DATEADD(HOUR,-24,GETDATE()))
+                   THEN ''⚠️ AT RISK'' ELSE ''✅ OK'' END + ''</td>
+    </tr>''
+FROM dbo.Staging_BackupReport
+ORDER BY 
+    -- Alerts first, then by server/db
+    CASE WHEN (LastFullBackup IS NULL OR LastFullBackup < DATEADD(HOUR,-24,GETDATE())) THEN 0 ELSE 1 END,
+    ServerName,
+    DatabaseName;
+
+SET @html = @html + N''
+  </tbody>
+</table>
+<div class="footer">
+  Report generated at '' + CONVERT(NVARCHAR, GETDATE(), 120) + '' by SQL Server Agent on agdw19prd001\sqlprd001.<br>
+  Backup paths monitored: \\ny.state.ny.us\... and \\nyofsprd616\...
+</div>
+</body>
+</html>'';
+
+-- ── Send the email ───────────────────────────────────────────
+EXEC msdb.dbo.sp_send_dbmail
+    @profile_name  = N''DBA Alerts'',       -- ← replace with your mail profile name
+    @recipients    = N''dba-team@ny.state.ny.us'',  -- ← replace with your distribution list
+    @subject       = @subject,
+    @body          = @html,
+    @body_format   = N''HTML'';
+',
+    @on_success_action = 1,   -- quit with success
+    @on_fail_action    = 2;   -- quit with failure
+
+-- ============================================================
+-- SCHEDULE: Every day at 7:00 AM
+-- ============================================================
+EXEC sp_add_schedule
+    @schedule_name      = N'Daily 7AM',
+    @freq_type          = 4,       -- daily
+    @freq_interval      = 1,
+    @active_start_time  = 070000,  -- 07:00:00
+    @schedule_id        = @schedId OUTPUT;
+
+EXEC sp_attach_schedule
+    @job_id      = @jobId,
+    @schedule_id = @schedId;
+
+-- Attach job to the local server (CMS master)
+EXEC sp_add_jobserver
+    @job_id      = @jobId,
+    @server_name = N'(local)';
+
+COMMIT TRANSACTION;
+GO
+```
+
+---
+
+## What you need to do after running this
+
+**One-time setup checklist:**
+
+| # | Action | Where |
+|---|--------|--------|
+| 1 | Run the full script above | `agdw19prd001\sqlprd001` → `dbadb` |
+| 2 | Confirm your **Database Mail profile name** (replace `DBA Alerts` in Step 2) | `msdb.dbo.sysmail_profile` |
+| 3 | Replace `dba-team@ny.state.ny.us` with your actual recipient address | Step 2 of the job |
+| 4 | Open the job in SSMS → **Step 1** → change **"Run on"** to your `09-Production` CMS server group | SSMS Job Properties |
+| 5 | Ensure all production servers have a **linked server** entry back to `agdw19prd001\sqlprd001` (so Step 1 can INSERT into the staging table) | Each target server |
+| 6 | Test by right-clicking the job → **Start Job at Step 1** | SSMS |
+
+---
+
+## How it works end-to-end
+```
+7:00 AM every day
+      │
+      ▼
+ Step 1 runs on EVERY server in 09-Production CMS group
+      │  → Deletes its own rows from Staging_BackupReport
+      │  → Queries its own msdb for backup history
+      │  → Inserts results back to CMS staging table
+      ▼
+ Step 2 runs on CMS master only
+      │  → Queries Staging_BackupReport
+      │  → Flags any DB where LastFullBackup is NULL or > 24 hrs old
+      │  → Builds color-coded HTML table (red rows = at risk)
+      │  → Emails subject line: ✅ All Healthy OR ⚠️ X DB(s) at risk
+      ▼
+ Your inbox
