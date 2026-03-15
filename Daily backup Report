@@ -1,3 +1,8 @@
+\\ny.state.ny.us\apps\SQLBackups_3260_Daily\Production\AGOSQL19PC1$AGOMatricPRD\MatricAdv-CVS\FULL_COPY_ONLY
+
+MatricAdv-CVS	FULL	ONLINE	2026-03-05 07:31:18.000	NULL	NULL	10 days ago	?? STALE
+
+
 -- ============================================================
 -- MASTER LIST -- EVERY DATABASE vs BACKUP HISTORY
 -- Shows all online databases and whether a Full backup
