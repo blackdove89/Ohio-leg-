@@ -1,3 +1,20 @@
+-- Run this from master on the same production server
+-- Shows us exactly what CommandLog recorded for the last 3 days
+SELECT TOP 20
+    DatabaseName,
+    CommandType,        -- BACKUP_DATABASE = Full,  BACKUP_LOG = Log
+    StartTime,
+    EndTime,
+    DATEDIFF(MINUTE, StartTime, EndTime)    AS DurationMinutes,
+    ErrorNumber,        -- 0 = success, anything else = failed
+    ErrorMessage
+FROM 
+    master.dbo.CommandLog
+WHERE 
+    CommandType IN ('BACKUP_DATABASE', 'BACKUP_LOG')
+AND StartTime >= DATEADD(DAY, -3, GETDATE())
+ORDER BY 
+    StartTime DESC;
 -- ============================================================
 -- FIND OLA'S CommandLog TABLE
 -- Ola installs into whichever database you chose at setup
