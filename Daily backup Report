@@ -1,3 +1,16 @@
+SELECT DISTINCT
+    CommandType,
+    COUNT(*)                    AS EntryCount,
+    MAX(StartTime)              AS MostRecent
+FROM 
+    master.dbo.CommandLog
+WHERE
+    StartTime >= DATEADD(DAY, -3, GETDATE())
+GROUP BY
+    CommandType
+ORDER BY
+    MostRecent DESC;
+========
 -- Run this from master on the same production server
 -- Shows us exactly what CommandLog recorded for the last 3 days
 SELECT TOP 20
