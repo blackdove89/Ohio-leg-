@@ -1,30 +1,40 @@
 -- ============================================================
--- DIAGNOSTIC STEP 2
--- See ALL distinct path patterns currently in backupmediafamily
--- This shows every unique root path being used across all backups
--- so we can see EXACTLY what the LIKE patterns need to match
+-- FINAL VALIDATED QUERY
+-- One path. One pattern. Clean and simple.
+-- Run this on your target server and confirm:
+--   1. Every ONLINE DB appears
+--   2. LastFullBackup shows last night's date
+--   3. NULL only appears for DBs with no backup to this path
 -- ============================================================
-SELECT DISTINCT
-    LEFT(bmf.physical_device_name, 40)   AS PathPrefix,
-    COUNT(*)                              AS BackupCount,
-    MAX(bs.backup_finish_date)            AS MostRecentBackup
+SELECT
+    CAST(SERVERPROPERTY('ServerName') AS NVARCHAR(256))                     AS ServerName,
+    db.name                                                                  AS DatabaseName,
+    db.recovery_model_desc                                                   AS RecoveryMode,
+    MAX(CASE WHEN bs.type = 'D' THEN bs.backup_finish_date ELSE NULL END)   AS LastFullBackup,
+    MAX(CASE WHEN bs.type = 'I' THEN bs.backup_finish_date ELSE NULL END)   AS LastDifferential,
+    MAX(CASE WHEN bs.type = 'L' THEN bs.backup_finish_date ELSE NULL END)   AS LastLog
 FROM
-    msdb.dbo.backupmediafamily bmf
-    INNER JOIN msdb.dbo.backupset bs
-        ON bs.media_set_id = bmf.media_set_id
+    master.sys.databases db
+    LEFT JOIN msdb.dbo.backupset bs
+        ON  bs.database_name = db.name
+        AND bs.media_set_id  IN
+            (
+                SELECT DISTINCT bmf.media_set_id
+                FROM   msdb.dbo.backupmediafamily bmf
+                WHERE  bmf.physical_device_name 
+                       LIKE '\\\\ny.state.ny.us\\SQLBackups_3260_Daily\\Production\\%'
+            )
 WHERE
-    bs.backup_finish_date >= DATEADD(DAY, -3, GETDATE())  -- last 3 days only
+    db.state_desc = 'ONLINE'
+    AND db.name  != 'tempdb'
 GROUP BY
-    LEFT(bmf.physical_device_name, 40)
+    db.name,
+    db.recovery_model_desc
 ORDER BY
-    MostRecentBackup DESC;
+    db.name;
+==============================
+--Verify backup path
 
-Testing
--- ============================================================
--- DIAGNOSTIC STEP 1
--- Show me the ACTUAL physical paths being used for backups
--- on this server so we can see exactly what strings to match
--- ============================================================
 SELECT DISTINCT
     bmf.physical_device_name,
     bs.backup_finish_date,
@@ -39,27 +49,7 @@ WHERE
     AND bs.type = 'D'                                      -- Full backups only
 ORDER BY
     bs.backup_finish_date DESC;
-```
 
-**This will show you the exact strings SQL Server recorded for last night's backups.** Run that and paste the results back here.
-
----
-
-While you do that, here is what I suspect is happening based on what you described:
-```
-You described two path formats:
-
-  \\agofsprd3260\<drive>\<environment>\<filename>.bak
-  \\ny.state.ny.us\<drive>\<environment>\<filename>.bak
-
-But the current filter only checks:
-  \\ny.state.ny.us\%          ← may be matching
-  \\nyofsprd616\%             ← likely WRONG server name
-
-The real path is probably:
-  \\agofsprd3260\%            ← notice: AGO not NYO, 3260 not 616
-
-====================
 Step 1
 -- ============================================================
 -- ONE-TIME SETUP
