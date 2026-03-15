@@ -1,0 +1,126 @@
+
+
+     (bmf.physical_device_name like '\\ny.state.ny.us\%' or
+      bmf.physical_device_name like '\\nyofsprd666\%'))
+      agdw19prd001\sqlprd001
+
+================================
+
+We currently have two PowerShell scripts that we run manually every morning. here are both scripts 
+
+#$Environment = "01-Development"
+#$Environment = "02-QA"
+#$Environment = "04-PreProduction"
+$Environment = "09-Production"
+
+Get-DbaRegServer -SqlInstance agodw19p01\sqlprd01 -Group $Environment | Get-DbaAgentJob -Category 'AGODatabaseBackup-Full' -ExcludeDisabledJobs | Out-GridView -Title "Full Backup"
+Get-DbaRegServer -SqlInstance agodw19p01\sqlprd01 -Group $Environment | Get-DbaAgentJob -Category 'AGODatabaseBackup-Log' -ExcludeDisabledJobs | Out-GridView -Title "Log Backup"
+#Get-DbaRegServer -SqlInstance agodw19p01\sqlprd01 -Group 05-Production | Get-DbaAgentJob -Job "DatabaseBackup - LOG" | Out-Gridview
+
+ and the other one is 
+
+#$Environment = "01-Development"
+#$Environment = "02-QA"
+#$Environment = "04-PreProduction"
+$Environment = "09-Production"
+#$Environment = "FDM"
+
+$ExportFile = 'C:\Projects\temp\Backup.csv'
+
+$WorkingDir = "C:\DailyMonitor\"
+if(!(Test-Path -Path $WorkingDir )){
+    New-Item -ItemType directory -Path $WorkingDir
+}
+$ExportFile = "$WorkingDir\Backup.csv"
+
+Get-DbaRegServer -SqlInstance 'agodw19p01\sqlprd01' -Group $Environment | Invoke-DbaQuery -Query "SELECT 
+   SERVERPROPERTY('Servername') AS ServerName, 
+   db.name DatabaseName,
+   db.recovery_model_desc RecoveryMode,
+   MAX(CASE WHEN bs.type = 'D' THEN bs.backup_finish_date ELSE NULL END) AS LastFullBackup,
+   MAX(CASE WHEN bs.type = 'I' THEN bs.backup_finish_date ELSE NULL END) AS LastDifferential,
+   MAX(CASE WHEN bs.type = 'L' THEN bs.backup_finish_date ELSE NULL END) AS LastLog
+FROM 
+  master.sys.databases db 
+  left join (msdb.dbo.backupmediafamily  bmf 
+  INNER JOIN msdb.dbo.backupset bs
+  ON bmf.media_set_id = bs.media_set_id and
+     (bmf.physical_device_name like '\\ny.state.ny.us\%' or
+      bmf.physical_device_name like '\\nyofsprd666\%'))
+  on db.name = bs.database_name
+WHERE
+  db.state_desc = 'ONLINE'
+GROUP BY 
+   db.name,
+   db.recovery_model_desc
+ORDER BY  
+   db.name " |  Export-Csv -Path $ExportFile -NoTypeInformation
+
+$columns = @{
+ ServerName = 'ServerName'
+ DatabaseName = 'DatabaseName'
+ RecoveryMode = 'RecoveryMode'
+ LastFullBackup = 'LastFullBackup'
+ LastDifferential = 'LastDifferential'
+ LastLog = 'LastLog'
+ }
+
+Import-DbaCsv -Path $ExportFile -SqlInstance 'agodw19p01.ag.state.oh.us\sqlprd01' -Database dbadb -Table Staging_BackupReport -Truncate -ColumnMap $columns
+
+Invoke-DbaQuery -SqlInstance 'agodw19p01.ny.state.oh.ny\sqlprd01' -Database dbadb -Query "
+with
+BackupDetails as (
+select 
+  row_number() over(partition by DatabaseName order by LastFullBackup desc) FullRowNumber,
+  row_number() over(partition by DatabaseName order by LastLog desc) LogRowNumber,
+  ServerName,
+  DatabaseName,
+  RecoveryMode,
+  LastFullBackup,
+  LastDifferential,
+  LastLog
+from 
+  [dbo].[Staging_BackupReport]
+)
+select
+  bd.ServerName,
+  bd.DatabaseName,
+  bd.RecoveryMode,
+  Bd.LastFullBackup
+from
+  BackupDetails bd
+where
+  bd.FullRowNumber = 1 and
+  bd.DatabaseName not in ('tempdb')
+order by
+  bd.LastFullBackup" | Out-GridView -Title "Full Bakcups"
+
+Invoke-DbaQuery -SqlInstance 'agodw19p01.ny.state.ny.us\sqlprd01' -Database dbadb -Query "
+with
+BackupDetails as (
+select 
+  row_number() over(partition by DatabaseName order by LastFullBackup desc) FullRowNumber,
+  row_number() over(partition by DatabaseName order by LastLog desc) LogRowNumber,
+  ServerName,
+  DatabaseName,
+  RecoveryMode,
+  LastFullBackup,
+  LastDifferential,
+  LastLog
+from 
+  [dbo].[Staging_BackupReport]
+)
+select
+  bd.ServerName,
+  bd.DatabaseName,
+  bd.RecoveryMode,
+  Bd.LastLog
+from
+  BackupDetails bd
+where
+  bd.LogRowNumber = 1 and
+  bd.DatabaseName not in ('tempdb') and
+  bd.RecoveryMode != 'SIMPLE'" | Out-GridView -Title "Log Bakcups"
+One shows us a backup status by just going to a server, and the other one shows us the results of individual databases on all the servers. 
+But what I want to do is create a job or a task schedule on our CMS server agodw19p01 that can go across all the servers and check all the databases and 
+make sure that all the backups were completed. I want this to send a report every morning to our email. How do I go about this?
