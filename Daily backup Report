@@ -1,4 +1,72 @@
 -- ============================================================
+-- MASTER LIST -- EVERY DATABASE vs BACKUP HISTORY
+-- Shows all online databases and whether a Full backup
+-- exists in msdb regardless of how far back we have to look
+-- No path filter -- catches everything msdb knows about
+-- ============================================================
+SELECT
+    db.name                                                         AS DatabaseName,
+    db.recovery_model_desc                                          AS RecoveryModel,
+    db.state_desc                                                   AS DBState,
+    MAX(CASE WHEN bs.type = 'D' THEN bs.backup_finish_date 
+             ELSE NULL END)                                         AS LastFullBackup,
+    MAX(CASE WHEN bs.type = 'I' THEN bs.backup_finish_date 
+             ELSE NULL END)                                         AS LastDifferential,
+    MAX(CASE WHEN bs.type = 'L' THEN bs.backup_finish_date 
+             ELSE NULL END)                                         AS LastLog,
+    -- How many days since last Full backup
+    CASE 
+        WHEN MAX(CASE WHEN bs.type = 'D' 
+                      THEN bs.backup_finish_date 
+                      ELSE NULL END) IS NULL
+        THEN 'NEVER BACKED UP'
+        ELSE CAST(
+                DATEDIFF(
+                    DAY,
+                    MAX(CASE WHEN bs.type = 'D' 
+                             THEN bs.backup_finish_date 
+                             ELSE NULL END),
+                    GETDATE()
+                ) AS NVARCHAR) + ' days ago'
+    END                                                             AS LastFullWas,
+    -- Clear status flag
+    CASE
+        WHEN MAX(CASE WHEN bs.type = 'D' 
+                      THEN bs.backup_finish_date 
+                      ELSE NULL END) IS NULL
+        THEN '❌ NO BACKUP EVER'
+        WHEN MAX(CASE WHEN bs.type = 'D' 
+                      THEN bs.backup_finish_date 
+                      ELSE NULL END) < DATEADD(DAY, -1, GETDATE())
+        THEN '⚠️ STALE'
+        ELSE '✅ OK'
+    END                                                             AS Status
+FROM
+    master.sys.databases db
+    LEFT JOIN msdb.dbo.backupset bs
+        ON bs.database_name = db.name
+WHERE
+    db.state_desc = 'ONLINE'
+    AND db.name  != 'tempdb'
+GROUP BY
+    db.name,
+    db.recovery_model_desc,
+    db.state_desc
+ORDER BY
+    -- Problem databases float to the top
+    CASE 
+        WHEN MAX(CASE WHEN bs.type = 'D' 
+                      THEN bs.backup_finish_date 
+                      ELSE NULL END) IS NULL 
+        THEN 0
+        WHEN MAX(CASE WHEN bs.type = 'D' 
+                      THEN bs.backup_finish_date 
+                      ELSE NULL END) < DATEADD(DAY, -1, GETDATE()) 
+        THEN 1
+        ELSE 2 
+    END,
+    db.name;
+-- ============================================================
 -- SHOW FULL BACKUP COUNT PER DATABASE
 -- Covers BOTH path types -- UNC and VDI GUID
 -- Shows exactly which databases have Full backups
