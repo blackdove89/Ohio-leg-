@@ -1,3 +1,39 @@
+-- ============================================================
+-- SIDE BY SIDE COMPARISON
+-- Shows Full backups WITH and WITHOUT the path filter
+-- so we can see exactly what is being excluded and why
+-- ============================================================
+
+-- LEFT SIDE: Full backups with NO filter (we know this returns rows)
+SELECT
+    'NO FILTER'                  AS TestName,
+    bs.database_name,
+    bs.backup_finish_date,
+    bmf.physical_device_name
+FROM msdb.dbo.backupmediafamily bmf
+INNER JOIN msdb.dbo.backupset bs
+    ON bmf.media_set_id = bs.media_set_id
+WHERE bs.type = 'D'
+AND   bs.backup_finish_date >= DATEADD(DAY, -1, GETDATE())
+
+UNION ALL
+
+-- RIGHT SIDE: Same but WITH the path filter (this is returning nothing)
+SELECT
+    'WITH FILTER'                AS TestName,
+    bs.database_name,
+    bs.backup_finish_date,
+    bmf.physical_device_name
+FROM msdb.dbo.backupmediafamily bmf
+INNER JOIN msdb.dbo.backupset bs
+    ON bmf.media_set_id = bs.media_set_id
+WHERE bs.type = 'D'
+AND   bs.backup_finish_date >= DATEADD(DAY, -1, GETDATE())
+AND   bmf.physical_device_name 
+      LIKE '\\ny.state.ny.us\SQLBackups_3260_Daily\Production\%'
+
+ORDER BY TestName, backup_finish_date DESC;
+==============
 SELECT DISTINCT
     bmf.physical_device_name,
     bs.backup_finish_date,
