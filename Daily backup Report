@@ -1,3 +1,36 @@
+Step 1
+-- ============================================================
+-- ONE-TIME SETUP
+-- Run this manually on agdw19prd001\sqlprd001 in [dbadb]
+-- Creates the staging table that the CMS pull will populate
+-- ============================================================
+USE dbadb;
+GO
+
+IF OBJECT_ID('dbo.Staging_BackupReport', 'U') IS NULL
+CREATE TABLE dbo.Staging_BackupReport
+(
+    ReportID         INT            IDENTITY(1,1) NOT NULL,
+    ServerName       NVARCHAR(256)  NOT NULL,
+    DatabaseName     NVARCHAR(256)  NOT NULL,
+    RecoveryMode     NVARCHAR(60)   NOT NULL,
+    LastFullBackup   DATETIME       NULL,   -- NULL means never backed up to approved path
+    LastDifferential DATETIME       NULL,
+    LastLog          DATETIME       NULL,
+    CollectedAt      DATETIME       NOT NULL DEFAULT GETDATE(),
+    CONSTRAINT PK_Staging_BackupReport PRIMARY KEY (ReportID)
+);
+GO
+
+-- Index to make the email query fast
+CREATE INDEX IX_Staging_Backup_Server_DB
+    ON dbo.Staging_BackupReport (ServerName, DatabaseName);
+GO
+
+PRINT 'Staging table created successfully.';
+GO
+
+Step 2
 -- ============================================================
 -- VALIDATION — Run on ONE production target server first
 -- Confirm it returns what you expect:
