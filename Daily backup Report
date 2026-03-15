@@ -1,3 +1,27 @@
+-- ============================================================
+-- SHOW FULL BACKUP COUNT PER DATABASE
+-- Covers BOTH path types -- UNC and VDI GUID
+-- Shows exactly which databases have Full backups
+-- and how many entries each one has in msdb
+-- ============================================================
+SELECT
+    bs.database_name,
+    bs.type,
+    COUNT(*)                        AS BackupEntryCount,
+    MAX(bs.backup_finish_date)      AS MostRecentFull,
+    MIN(bs.backup_finish_date)      AS OldestInWindow
+FROM msdb.dbo.backupmediafamily bmf
+INNER JOIN msdb.dbo.backupset bs
+    ON bmf.media_set_id = bs.media_set_id
+WHERE bs.type = 'D'
+AND   bs.backup_finish_date >= DATEADD(DAY, -3, GETDATE())
+GROUP BY
+    bs.database_name,
+    bs.type
+ORDER BY
+    bs.database_name;
+
+===============
 no filter 
 -- ============================================================
 -- CONFIRM VDI = FULL BACKUPS
