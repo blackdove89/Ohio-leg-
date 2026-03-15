@@ -1,6 +1,4 @@
-$TestServer = "YourTestProdServer\Instance"
 
-Invoke-DbaQuery -SqlInstance $TestServer -Query $approvedBackupQuery
 -- ============================================================
 -- FULL SOLUTION — Run this entire script on agdw19prd001\sqlprd001
 -- It creates:
