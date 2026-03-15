@@ -1,3 +1,70 @@
+-- ============================================================
+-- FINAL VALIDATION QUERY USING CommandLog
+-- This is what the agent job will be based on
+-- Run from master on your production server
+-- ============================================================
+SELECT
+    CAST(SERVERPROPERTY('ServerName') AS NVARCHAR(256))     AS ServerName,
+    db.name                                                  AS DatabaseName,
+    db.recovery_model_desc                                   AS RecoveryModel,
+    -- Last Full backup from Ola's CommandLog
+    MAX(CASE WHEN cl.CommandType = 'BACKUP_DATABASE' 
+             AND cl.ErrorNumber = 0
+             THEN cl.EndTime ELSE NULL END)                  AS LastFullBackup,
+    -- Last Log backup from Ola's CommandLog
+    MAX(CASE WHEN cl.CommandType = 'BACKUP_LOG'
+             AND cl.ErrorNumber = 0
+             THEN cl.EndTime ELSE NULL END)                  AS LastLogBackup,
+    -- Last verify from Ola
+    MAX(CASE WHEN cl.CommandType = 'RESTORE_VERIFYONLY'
+             AND cl.ErrorNumber = 0
+             THEN cl.EndTime ELSE NULL END)                  AS LastVerified,
+    -- How long ago was the last Full backup
+    CASE
+        WHEN MAX(CASE WHEN cl.CommandType = 'BACKUP_DATABASE'
+                      AND cl.ErrorNumber = 0
+                      THEN cl.EndTime ELSE NULL END) IS NULL
+        THEN '❌ NO FULL BACKUP IN CommandLog'
+        WHEN MAX(CASE WHEN cl.CommandType = 'BACKUP_DATABASE'
+                      AND cl.ErrorNumber = 0
+                      THEN cl.EndTime ELSE NULL END) < DATEADD(DAY, -1, GETDATE())
+        THEN '⚠️ STALE - ' + CAST(
+                DATEDIFF(DAY,
+                    MAX(CASE WHEN cl.CommandType = 'BACKUP_DATABASE'
+                              AND cl.ErrorNumber = 0
+                              THEN cl.EndTime ELSE NULL END),
+                    GETDATE())
+                AS NVARCHAR) + ' days ago'
+        ELSE '✅ OK'
+    END                                                      AS Status,
+    -- Flag any backup that ran but had an error
+    MAX(CASE WHEN cl.CommandType = 'BACKUP_DATABASE'
+             AND cl.ErrorNumber != 0
+             THEN cl.ErrorMessage ELSE NULL END)             AS LastErrorMessage
+FROM
+    master.sys.databases db
+    LEFT JOIN master.dbo.CommandLog cl
+        ON  cl.DatabaseName = db.name
+        AND cl.StartTime   >= DATEADD(DAY, -8, GETDATE())  -- 8 days covers weekly fulls too
+WHERE
+    db.state_desc = 'ONLINE'
+    AND db.name   != 'tempdb'
+GROUP BY
+    db.name,
+    db.recovery_model_desc
+ORDER BY
+    CASE
+        WHEN MAX(CASE WHEN cl.CommandType = 'BACKUP_DATABASE'
+                      AND cl.ErrorNumber = 0
+                      THEN cl.EndTime ELSE NULL END) IS NULL      THEN 0
+        WHEN MAX(CASE WHEN cl.CommandType = 'BACKUP_DATABASE'
+                      AND cl.ErrorNumber = 0
+                      THEN cl.EndTime ELSE NULL END) < DATEADD(DAY, -1, GETDATE()) THEN 1
+        ELSE 2
+    END,
+    db.name;
+=================
+
 xp_delete_file	312	2026-03-15 12:30:08.4367202
 RESTORE_VERIFYONLY	312	2026-03-15 12:30:08.3967210
 BACKUP_LOG	288	2026-03-15 12:30:07.9517002
