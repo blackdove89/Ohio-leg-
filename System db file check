@@ -1,0 +1,15 @@
+SELECT
+    DB_NAME(database_id) AS DatabaseName,
+    name AS LogicalName,
+    physical_name
+FROM sys.master_files
+WHERE DB_NAME(database_id) IN
+(
+    'master',
+    'model',
+    'msdb',
+    'tempdb',
+    'model_replicatedmaster',
+    'model_msdb'
+)
+ORDER BY DatabaseName, file_id;
